@@ -1,19 +1,17 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 import AuthScreen from "./components/AuthScreen";
-import ProjectsDashboard from "./components/ProjectsDashboard";
-import ChecklistView from "./components/ChecklistView";
-import DashboardView from "./components/DashboardView";
+import OrgSelector from "./components/OrgSelector";
+import OrgShell from "./components/OrgShell";
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("projects");
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [userRole, setUserRole] = useState(null);
-  const [inviteToast, setInviteToast] = useState(null); // { type: "success"|"error", message }
+  const [org, setOrg] = useState(null);
+  const [orgRole, setOrgRole] = useState(null);
+  const [inviteToast, setInviteToast] = useState(null);
 
-  // Store pending invite token for users who aren't logged in yet
+  // Capture invite token before auth redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("invite");
@@ -31,7 +29,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Process invite token once session is available
+  // Process invite token once logged in
   useEffect(() => {
     if (!session) return;
     const urlToken = new URLSearchParams(window.location.search).get("invite");
@@ -45,67 +43,50 @@ export default function App() {
   }, [session]);
 
   const processInviteToken = async (token, userId) => {
-    const { data: tokenData, error } = await supabase
+    const { data: tokenData } = await supabase
       .from("project_invite_tokens")
       .select("*, project:projects(id, name)")
       .eq("token", token)
       .gte("expires_at", new Date().toISOString())
       .single();
 
-    if (error || !tokenData) {
-      setInviteToast({ type: "error", message: "Invite link is invalid or has expired." });
-      setTimeout(() => setInviteToast(null), 5000);
-      return;
-    }
+    if (!tokenData) { showToast("error", "Invite link is invalid or has expired."); return; }
 
     const { data: existing } = await supabase
-      .from("project_members")
-      .select("id")
-      .eq("project_id", tokenData.project_id)
-      .eq("user_id", userId)
-      .single();
+      .from("project_members").select("id")
+      .eq("project_id", tokenData.project_id).eq("user_id", userId).single();
 
-    if (existing) {
-      setInviteToast({ type: "info", message: `You're already a member of "${tokenData.project?.name}".` });
-      setTimeout(() => setInviteToast(null), 4000);
-      return;
-    }
+    if (existing) { showToast("info", `You're already a member of "${tokenData.project?.name}".`); return; }
 
     await supabase.from("project_members").insert({
-      project_id: tokenData.project_id,
-      user_id: userId,
-      role: tokenData.role,
-      invited_by: tokenData.created_by,
+      project_id: tokenData.project_id, user_id: userId,
+      role: tokenData.role, invited_by: tokenData.created_by,
     });
-
     await supabase.from("notifications").insert({
-      user_id: userId,
-      project_id: tokenData.project_id,
+      user_id: userId, project_id: tokenData.project_id,
       type: "project_join",
       title: `Joined "${tokenData.project?.name}"`,
       body: `You joined as ${tokenData.role.replace(/_/g, " ")}. The project is now in your list.`,
     });
+    showToast("success", `✅ You've joined "${tokenData.project?.name}"!`);
+  };
 
-    setInviteToast({ type: "success", message: `✅ You've joined "${tokenData.project?.name}"! It's now in your projects list.` });
-    setTimeout(() => setInviteToast(null), 6000);
+  const showToast = (type, message) => {
+    setInviteToast({ type, message });
+    setTimeout(() => setInviteToast(null), 5000);
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setSelectedProject(null);
-    setUserRole(null);
-    setView("projects");
+    setOrg(null);
+    setOrgRole(null);
   };
 
-  const goToProjects = () => setView("projects");
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Manrope, sans-serif" }}>
-        Loading...
-      </div>
-    );
-  }
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Manrope, sans-serif" }}>
+      Loading...
+    </div>
+  );
 
   if (!session) return <AuthScreen />;
 
@@ -132,33 +113,19 @@ export default function App() {
         </div>
       )}
 
-      {view === "checklist" && selectedProject ? (
-        <ChecklistView
-          project={selectedProject}
-          userRole={userRole}
+      {!org ? (
+        <OrgSelector
           session={session}
-          onBack={goToProjects}
+          onSelectOrg={(selectedOrg, role) => { setOrg(selectedOrg); setOrgRole(role); }}
           onSignOut={handleSignOut}
-          onGoToProjects={goToProjects}
-        />
-      ) : view === "dashboard" ? (
-        <DashboardView
-          session={session}
-          onBack={goToProjects}
-          onSignOut={handleSignOut}
-          onGoToProjects={goToProjects}
         />
       ) : (
-        <ProjectsDashboard
+        <OrgShell
           session={session}
-          onSelectProject={(project, role) => {
-            setSelectedProject(project);
-            setUserRole(role);
-            setView("checklist");
-          }}
-          onShowDashboard={() => setView("dashboard")}
+          org={org}
+          orgRole={orgRole}
           onSignOut={handleSignOut}
-          onGoToProjects={goToProjects}
+          onSwitchOrg={() => { setOrg(null); setOrgRole(null); }}
         />
       )}
     </>

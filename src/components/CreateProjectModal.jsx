@@ -141,7 +141,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
     });
     if (memberError) { setError(memberError.message); setLoading(false); setProgress(""); return; }
 
-    // Copy org-level checklist config as project defaults
+    // Copy org-level checklist config as project defaults (includes custom categories)
     if (org?.id) {
       const { data: orgCfg } = await supabase.from("org_checklist_config")
         .select("*").eq("organization_id", org.id);
@@ -150,6 +150,11 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
           orgCfg.map((c) => ({ project_id: project.id, category: c.category, enabled: c.enabled, label: c.label || null }))
         );
       }
+      // Always ensure project_specific exists and is enabled by default
+      await supabase.from("project_checklist_config").upsert(
+        { project_id: project.id, category: "project_specific", enabled: true, label: null },
+        { onConflict: "project_id,category" }
+      );
     }
 
     setProgress("Populating default checklist items...");

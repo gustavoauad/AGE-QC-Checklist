@@ -211,7 +211,8 @@ function MembersTab({ org, session, orgRole }) {
 // ── Checklists tab ───────────────────────────────────────────────────────────
 function ChecklistsTab({ org, orgRole }) {
   const [config, setConfig] = useState({});
-  const [items, setItems] = useState({});   // { [catId]: [...] } — null means not yet loaded
+  const [customCats, setCustomCats] = useState([]); // [{id, label, sort_order}]
+  const [items, setItems] = useState({});
   const [loading, setLoading] = useState(true);
   const [expandedCat, setExpandedCat] = useState(null);
   const [renamingCat, setRenamingCat] = useState(null);
@@ -223,17 +224,25 @@ function ChecklistsTab({ org, orgRole }) {
   const [dragIdx, setDragIdx] = useState(null);
   const [dropIdx, setDropIdx] = useState(null);
   const dragCat = useRef(null);
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [savingCat, setSavingCat] = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
   const fetchAll = async () => {
     const [{ data: cfgData }, { data: itemData }] = await Promise.all([
-      supabase.from("org_checklist_config").select("*").eq("organization_id", org.id),
+      supabase.from("org_checklist_config").select("*").eq("organization_id", org.id).order("sort_order"),
       supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).order("sort_order"),
     ]);
     const cfgMap = {};
-    (cfgData || []).forEach((r) => { cfgMap[r.category] = { enabled: r.enabled, label: r.label }; });
+    const customs = [];
+    (cfgData || []).forEach((r) => {
+      cfgMap[r.category] = { enabled: r.enabled, label: r.label, is_custom: r.is_custom };
+      if (r.is_custom) customs.push({ id: r.category, label: r.label, sort_order: r.sort_order });
+    });
     setConfig(cfgMap);
+    setCustomCats(customs.sort((a, b) => a.sort_order - b.sort_order));
 
     const itemMap = {};
     (itemData || []).forEach((r) => {
@@ -242,6 +251,34 @@ function ChecklistsTab({ org, orgRole }) {
     });
     setItems(itemMap);
     setLoading(false);
+  };
+
+  const addCustomCategory = async () => {
+    if (!newCatName.trim()) return;
+    setSavingCat(true);
+    const catId = `org_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const maxOrder = customCats.reduce((m, c) => Math.max(m, c.sort_order ?? 0), CATEGORIES.length);
+    await supabase.from("org_checklist_config").insert({
+      organization_id: org.id, category: catId,
+      label: newCatName.trim(), enabled: true,
+      is_custom: true, sort_order: maxOrder + 1,
+    });
+    setCustomCats((p) => [...p, { id: catId, label: newCatName.trim(), sort_order: maxOrder + 1 }]);
+    setConfig((p) => ({ ...p, [catId]: { enabled: true, label: newCatName.trim(), is_custom: true } }));
+    setItems((p) => ({ ...p, [catId]: [] }));
+    setNewCatName(""); setAddingCat(false); setSavingCat(false);
+  };
+
+  const deleteCustomCategory = async (catId) => {
+    if (!window.confirm("Delete this checklist and all its items? This cannot be undone.")) return;
+    await Promise.all([
+      supabase.from("org_checklist_items").delete().eq("organization_id", org.id).eq("category", catId),
+      supabase.from("org_checklist_config").delete().eq("organization_id", org.id).eq("category", catId),
+    ]);
+    setCustomCats((p) => p.filter((c) => c.id !== catId));
+    setConfig((p) => { const n = { ...p }; delete n[catId]; return n; });
+    setItems((p) => { const n = { ...p }; delete n[catId]; return n; });
+    if (expandedCat === catId) setExpandedCat(null);
   };
 
   // Copy template items for a category into org_checklist_items (lazy init)
@@ -327,19 +364,57 @@ function ChecklistsTab({ org, orgRole }) {
 
   if (loading) return <p style={{ color: "#94a3b8" }}>Loading...</p>;
 
+  const allCats = [
+    ...CATEGORIES.map((c) => ({ ...c, isCustom: false })),
+    ...customCats.map((c) => ({ id: c.id, label: config[c.id]?.label || c.label, isCustom: true })),
+  ];
+
   return (
     <div>
-      <div style={{ marginBottom: "20px" }}>
-        <h3 style={{ color: "#f1f5f9", margin: "0 0 4px", fontSize: "16px" }}>Default Checklists</h3>
-        <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
-          {orgRole === "admin"
-            ? "Customize categories and items. New projects inherit these defaults."
-            : "Default checklist configuration for this organization."}
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <h3 style={{ color: "#f1f5f9", margin: "0 0 4px", fontSize: "16px" }}>Default Checklists</h3>
+          <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
+            {orgRole === "admin"
+              ? "Customize categories and items. New projects inherit these defaults."
+              : "Default checklist configuration for this organization."}
+          </p>
+        </div>
+        {orgRole === "admin" && (
+          <button onClick={() => setAddingCat(true)} style={{
+            padding: "8px 16px", background: "#0095da", color: "white", border: "none",
+            borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600",
+            fontFamily: "Manrope, sans-serif", flexShrink: 0,
+          }}>
+            + Add Checklist
+          </button>
+        )}
       </div>
 
+      {/* New checklist form */}
+      {addingCat && (
+        <div style={{ background: "#0f172a", border: "1px solid #0095da", borderRadius: "10px", padding: "14px 16px", marginBottom: "12px", display: "flex", gap: "8px", alignItems: "center" }}>
+          <input
+            autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") addCustomCategory(); if (e.key === "Escape") { setAddingCat(false); setNewCatName(""); } }}
+            placeholder="Checklist name (e.g. MEP Coordination)"
+            style={{ flex: 1, padding: "8px 12px", background: "#1e293b", border: "1px solid #0095da", borderRadius: "7px", color: "#f1f5f9", fontSize: "14px", fontFamily: "Manrope, sans-serif" }}
+          />
+          <button onClick={addCustomCategory} disabled={savingCat || !newCatName.trim()} style={{
+            padding: "8px 16px", background: "#0095da", color: "white", border: "none",
+            borderRadius: "7px", cursor: savingCat ? "not-allowed" : "pointer", fontSize: "13px", fontWeight: "600",
+          }}>
+            {savingCat ? "..." : "Create"}
+          </button>
+          <button onClick={() => { setAddingCat(false); setNewCatName(""); }} style={{
+            padding: "8px 12px", background: "transparent", border: "1px solid #334155",
+            color: "#94a3b8", borderRadius: "7px", cursor: "pointer", fontSize: "13px",
+          }}>×</button>
+        </div>
+      )}
+
       <div style={{ display: "grid", gap: "8px" }}>
-        {CATEGORIES.map((cat) => {
+        {allCats.map((cat) => {
           const enabled = config[cat.id]?.enabled !== false;
           const isExpanded = expandedCat === cat.id;
           const catItems = items[cat.id];
@@ -377,9 +452,12 @@ function ChecklistsTab({ org, orgRole }) {
                       <button onClick={() => setRenamingCat(null)} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #334155", color: "#94a3b8", borderRadius: "5px", cursor: "pointer", fontSize: "12px" }}>×</button>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "600" }}>{getLabel(cat)}</span>
-                      {config[cat.id]?.label && config[cat.id].label !== cat.label && (
+                      {cat.isCustom && (
+                        <span style={{ fontSize: "10px", color: "#0095da", background: "#012d5a", padding: "1px 7px", borderRadius: "20px", fontWeight: "600" }}>custom</span>
+                      )}
+                      {!cat.isCustom && config[cat.id]?.label && config[cat.id].label !== cat.label && (
                         <span style={{ color: "#64748b", fontSize: "11px" }}>({cat.label})</span>
                       )}
                     </div>
@@ -388,12 +466,20 @@ function ChecklistsTab({ org, orgRole }) {
 
                 {/* Actions */}
                 {orgRole === "admin" && !isRenamingThis && (
-                  <button onClick={() => { setRenamingCat(cat.id); setRenameText(getLabel(cat)); }} style={{
-                    padding: "3px 8px", background: "transparent", border: "1px solid #334155",
-                    color: "#64748b", borderRadius: "5px", cursor: "pointer", fontSize: "11px", flexShrink: 0,
-                  }}>
-                    Rename
-                  </button>
+                  <div style={{ display: "flex", gap: "5px", flexShrink: 0 }}>
+                    <button onClick={() => { setRenamingCat(cat.id); setRenameText(getLabel(cat)); }} style={{
+                      padding: "3px 8px", background: "transparent", border: "1px solid #334155",
+                      color: "#64748b", borderRadius: "5px", cursor: "pointer", fontSize: "11px",
+                    }}>
+                      Rename
+                    </button>
+                    {cat.isCustom && (
+                      <button onClick={() => deleteCustomCategory(cat.id)} style={{
+                        padding: "3px 7px", background: "transparent", border: "1px solid #334155",
+                        color: "#ef4444", borderRadius: "5px", cursor: "pointer", fontSize: "11px",
+                      }}>✕</button>
+                    )}
+                  </div>
                 )}
                 <button onClick={() => expandCat(cat.id)} style={{
                   background: "none", border: "none", color: isExpanded ? "#0095da" : "#64748b",
