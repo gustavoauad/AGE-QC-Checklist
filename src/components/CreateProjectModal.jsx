@@ -9,7 +9,7 @@ const inputStyle = {
 };
 const labelStyle = { display: "block", color: "#94a3b8", fontSize: "13px", marginBottom: "6px" };
 
-export default function CreateProjectModal({ onClose, onCreated, userId }) {
+export default function CreateProjectModal({ onClose, onCreated, userId, org }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [useTemplate, setUseTemplate] = useState(false);
@@ -21,15 +21,13 @@ export default function CreateProjectModal({ onClose, onCreated, userId }) {
 
   useEffect(() => {
     supabase
-      .from("project_members")
-      .select("project_id, project:projects(id, name)")
-      .eq("user_id", userId)
-      .eq("role", "project_manager")
-      .then(({ data }) => {
-        const projs = (data || []).map((r) => r.project).filter(Boolean);
-        setPmProjects(projs);
-      });
-  }, [userId]);
+      .from("projects")
+      .select("id, name")
+      .eq("organization_id", org?.id)
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setPmProjects(data || []));
+  }, [userId, org?.id]);
 
   const applyTemplate = async (newProjectId, templateId) => {
     setProgress("Copying checklist configuration...");
@@ -132,7 +130,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId }) {
     setProgress("Creating project...");
     const { data: project, error: projError } = await supabase
       .from("projects")
-      .insert({ name, description, created_by: userId })
+      .insert({ name, description, created_by: userId, organization_id: org?.id || null })
       .select()
       .single();
     if (projError) { setError(projError.message); setLoading(false); setProgress(""); return; }
@@ -143,16 +141,49 @@ export default function CreateProjectModal({ onClose, onCreated, userId }) {
     });
     if (memberError) { setError(memberError.message); setLoading(false); setProgress(""); return; }
 
+    // Copy org-level checklist config as project defaults
+    if (org?.id) {
+      const { data: orgCfg } = await supabase.from("org_checklist_config")
+        .select("*").eq("organization_id", org.id);
+      if (orgCfg?.length) {
+        await supabase.from("project_checklist_config").insert(
+          orgCfg.map((c) => ({ project_id: project.id, category: c.category, enabled: c.enabled, label: c.label || null }))
+        );
+      }
+    }
+
     setProgress("Populating default checklist items...");
-    const checklistItems = CHECKLIST_TEMPLATE.map((item) => ({
-      project_id: project.id,
-      item_id: item.item_id,
-      category: item.category,
-      sub_section: item.sub_section || null,
-      phase: item.phase || null,
-      item_text: item.text,
-      status: "pending",
-    }));
+
+    // Use org-level item overrides if they exist, otherwise fall back to template
+    const { data: orgItems } = org?.id
+      ? await supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).eq("enabled", true).order("sort_order")
+      : { data: null };
+
+    let checklistItems;
+    if (orgItems && orgItems.length > 0) {
+      // Build a quick lookup from template for sub_section / phase metadata
+      const tmplMeta = {};
+      CHECKLIST_TEMPLATE.forEach((t) => { tmplMeta[t.item_id] = { sub_section: t.sub_section, phase: t.phase }; });
+      checklistItems = orgItems.map((item) => ({
+        project_id: project.id,
+        item_id: item.item_id,
+        category: item.category,
+        sub_section: tmplMeta[item.item_id]?.sub_section || null,
+        phase: tmplMeta[item.item_id]?.phase || null,
+        item_text: item.item_text,
+        status: "pending",
+      }));
+    } else {
+      checklistItems = CHECKLIST_TEMPLATE.map((item) => ({
+        project_id: project.id,
+        item_id: item.item_id,
+        category: item.category,
+        sub_section: item.sub_section || null,
+        phase: item.phase || null,
+        item_text: item.text,
+        status: "pending",
+      }));
+    }
 
     for (let i = 0; i < checklistItems.length; i += 50) {
       const { error: checklistError } = await supabase.from("checklists").insert(checklistItems.slice(i, i + 50));
