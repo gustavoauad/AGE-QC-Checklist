@@ -9,7 +9,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState(null);
   const [updating, setUpdating] = useState(null);
-  const [categoryConfig, setCategoryConfig] = useState({});
+  const [categoryConfig, setCategoryConfig] = useState({}); // { [catKey]: { enabled, label } }
   const [profilesMap, setProfilesMap] = useState({});
   const [openComments, setOpenComments] = useState(null);
   const [commentsCache, setCommentsCache] = useState({});
@@ -33,7 +33,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     ]);
     if (!checklistRes.error) setChecklists(checklistRes.data || []);
     const cfgMap = {};
-    (configRes.data || []).forEach((r) => { cfgMap[r.category] = r.enabled; });
+    (configRes.data || []).forEach((r) => { cfgMap[r.category] = { enabled: r.enabled, label: r.label }; });
     setCategoryConfig(cfgMap);
     const ms = milestoneRes.data || [];
     setMilestones(ms);
@@ -69,11 +69,19 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     if (mode === "milestone" && activeMilestoneId) await fetchMilestoneItems(activeMilestoneId);
   };
 
-  const enabledCategories = CATEGORIES.filter((cat) => categoryConfig[cat.id] !== false);
+  const standardCatIds = new Set(CATEGORIES.map((c) => c.id));
+  const customCats = Object.entries(categoryConfig)
+    .filter(([key, val]) => !standardCatIds.has(key) && val?.label)
+    .map(([key, val]) => ({ id: key, label: val.label }));
+  const allCategories = [...CATEGORIES, ...customCats];
+  const enabledCategories = allCategories.filter((cat) => categoryConfig[cat.id]?.enabled !== false);
 
   useEffect(() => {
     if (!activeCategory && enabledCategories.length > 0) setActiveCategory(enabledCategories[0].id);
   }, [categoryConfig, loading]);
+
+  const getCatLabel = (catId) =>
+    categoryConfig[catId]?.label || CATEGORIES.find((c) => c.id === catId)?.label || catId;
 
   const canEdit = (category) => {
     if (userRole === "project_manager") return true;
@@ -180,7 +188,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const activeMilestoneItemIds = activeMilestoneId ? (milestoneItemsCache[activeMilestoneId] || null) : null;
   const milestoneItems = activeMilestoneItemIds ? checklists.filter((c) => activeMilestoneItemIds.has(c.id)) : [];
   const groupedMilestoneItems = milestoneItems.reduce((acc, item) => {
-    const catLabel = CATEGORIES.find((c) => c.id === item.category)?.label || item.category;
+    const catLabel = getCatLabel(item.category);
     const key = item.sub_section ? `${catLabel} — ${item.sub_section}` : catLabel;
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);
@@ -472,7 +480,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
                 <h2 style={{ color: "#f1f5f9", margin: 0, fontSize: isMobile ? "16px" : "20px" }}>
-                  {CATEGORIES.find((c) => c.id === activeCategory)?.label}
+                  {getCatLabel(activeCategory)}
                 </h2>
                 {activeCategory && !canEdit(activeCategory) && (
                   <span style={{ fontSize: "11px", color: "#f59e0b", background: "#451a03", padding: "4px 10px", borderRadius: "20px", border: "1px solid #f59e0b" }}>

@@ -12,57 +12,227 @@ const labelStyle = { display: "block", color: "#94a3b8", fontSize: "13px", margi
 
 // ── Checklists tab ─────────────────────────────────────────────────────────
 function ChecklistsTab({ project }) {
-  const [config, setConfig] = useState({});
-  const [saving, setSaving] = useState(null);
+  const [config, setConfig] = useState({});   // { [catKey]: { enabled, label } }
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedCat, setExpandedCat] = useState(null);
+  const [localEdits, setLocalEdits] = useState({});
+  const [savingEdits, setSavingEdits] = useState(false);
+  const [duplicating, setDuplicating] = useState(null);
+  const [renamingCat, setRenamingCat] = useState(null);
+  const [renameText, setRenameText] = useState("");
 
-  useEffect(() => {
-    supabase.from("project_checklist_config").select("*").eq("project_id", project.id)
-      .then(({ data }) => {
-        if (data) {
-          const map = {};
-          data.forEach((r) => { map[r.category] = r.enabled; });
-          setConfig(map);
-        }
-      });
-  }, []);
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    setLoading(true);
+    const [cfgRes, itemsRes] = await Promise.all([
+      supabase.from("project_checklist_config").select("*").eq("project_id", project.id),
+      supabase.from("checklists").select("*").eq("project_id", project.id).order("item_id"),
+    ]);
+    const cfgMap = {};
+    (cfgRes.data || []).forEach((r) => { cfgMap[r.category] = { enabled: r.enabled, label: r.label }; });
+    setConfig(cfgMap);
+    setItems(itemsRes.data || []);
+    setLoading(false);
+  };
+
+  const standardCatIds = new Set(CATEGORIES.map((c) => c.id));
+
+  const customCategories = Object.entries(config)
+    .filter(([key, val]) => !standardCatIds.has(key) && val?.label)
+    .map(([key, val]) => ({ id: key, label: val.label, isCustom: true }));
+
+  const allCategories = [
+    ...CATEGORIES.map((c) => ({ ...c, isCustom: false })),
+    ...customCategories,
+  ];
 
   const toggle = async (catId) => {
-    const newVal = config[catId] === false ? true : false; // default is true, toggling off makes it false
-    setSaving(catId);
+    const current = config[catId];
+    const newEnabled = current?.enabled === false ? true : false;
     await supabase.from("project_checklist_config").upsert(
-      { project_id: project.id, category: catId, enabled: newVal },
+      { project_id: project.id, category: catId, enabled: newEnabled, label: current?.label || null },
       { onConflict: "project_id,category" }
     );
-    setConfig((prev) => ({ ...prev, [catId]: newVal }));
-    setSaving(null);
+    setConfig((prev) => ({ ...prev, [catId]: { ...prev[catId], enabled: newEnabled } }));
   };
+
+  const duplicate = async (cat) => {
+    if (duplicating) return;
+    setDuplicating(cat.id);
+    const catItems = items.filter((i) => i.category === cat.id);
+    const ts = Date.now().toString(36);
+    const newKey = `${cat.id.substring(0, 8)}_copy_${ts}`;
+    const newLabel = `${cat.label} (Copy)`;
+
+    const copies = catItems.map((item) => ({
+      project_id: project.id,
+      item_id: `${newKey}_${item.item_id}`,
+      category: newKey,
+      sub_section: item.sub_section || null,
+      phase: item.phase || null,
+      item_text: item.item_text,
+      status: "pending",
+      is_custom: true,
+    }));
+
+    for (let i = 0; i < copies.length; i += 50) {
+      await supabase.from("checklists").insert(copies.slice(i, i + 50));
+    }
+    await supabase.from("project_checklist_config").upsert(
+      { project_id: project.id, category: newKey, enabled: true, label: newLabel },
+      { onConflict: "project_id,category" }
+    );
+    await loadAll();
+    setDuplicating(null);
+  };
+
+  const deleteCustomCat = async (catId) => {
+    if (!window.confirm("Delete this checklist and all its items? This cannot be undone.")) return;
+    await supabase.from("checklists").delete().eq("project_id", project.id).eq("category", catId);
+    await supabase.from("project_checklist_config").delete()
+      .eq("project_id", project.id).eq("category", catId);
+    await loadAll();
+  };
+
+  const toggleExpand = (catId) => {
+    if (expandedCat === catId) { setExpandedCat(null); setLocalEdits({}); }
+    else { setExpandedCat(catId); setLocalEdits({}); }
+  };
+
+  const saveEdits = async () => {
+    setSavingEdits(true);
+    for (const [id, text] of Object.entries(localEdits)) {
+      await supabase.from("checklists").update({ item_text: text }).eq("id", id);
+    }
+    setItems((prev) => prev.map((i) => localEdits[i.id] ? { ...i, item_text: localEdits[i.id] } : i));
+    setLocalEdits({});
+    setSavingEdits(false);
+  };
+
+  const saveRename = async (catId) => {
+    if (!renameText.trim()) return;
+    await supabase.from("project_checklist_config").upsert(
+      { project_id: project.id, category: catId, enabled: config[catId]?.enabled ?? true, label: renameText.trim() },
+      { onConflict: "project_id,category" }
+    );
+    setConfig((prev) => ({ ...prev, [catId]: { ...prev[catId], label: renameText.trim() } }));
+    setRenamingCat(null);
+  };
+
+  if (loading) return <p style={{ color: "#94a3b8" }}>Loading...</p>;
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", fontSize: "14px", marginTop: 0 }}>
-        Toggle which checklist categories apply to this project. Disabled categories are hidden in the checklist view.
+      <p style={{ color: "#94a3b8", fontSize: "13px", marginTop: 0, marginBottom: "16px" }}>
+        Enable/disable categories, edit item text (project-specific), or duplicate a category to create a custom version.
       </p>
+
       <div style={{ display: "grid", gap: "8px" }}>
-        {CATEGORIES.map((cat) => {
-          const enabled = config[cat.id] !== false;
+        {allCategories.map((cat) => {
+          const cfg = config[cat.id];
+          const enabled = cfg?.enabled !== false;
+          const isExpanded = expandedCat === cat.id;
+          const catItems = items.filter((i) => i.category === cat.id);
+          const isDuplicating = duplicating === cat.id;
+          const isRenaming = renamingCat === cat.id;
+          const hasEdits = isExpanded && Object.keys(localEdits).length > 0;
+
           return (
-            <div key={cat.id} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 16px", background: "#0f172a", borderRadius: "8px",
-              border: `1px solid ${enabled ? "#334155" : "#1e293b"}`,
-              opacity: enabled ? 1 : 0.55,
-            }}>
-              <span style={{ color: "#f1f5f9", fontSize: "14px" }}>{cat.label}</span>
-              <button
-                onClick={() => toggle(cat.id)}
-                disabled={saving === cat.id}
-                style={{
-                  padding: "4px 14px", border: `1px solid ${enabled ? "#4da447" : "#334155"}`,
-                  borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600",
-                  background: enabled ? "#1a3318" : "#1e293b", color: enabled ? "#7ecb7b" : "#64748b",
-                }}>
-                {saving === cat.id ? "..." : enabled ? "Enabled" : "Disabled"}
-              </button>
+            <div key={cat.id} style={{ border: `1px solid ${isExpanded ? "#0095da" : "#334155"}`, borderRadius: "8px", overflow: "hidden", opacity: enabled ? 1 : 0.65 }}>
+
+              {/* Header row */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", background: isExpanded ? "#011a3d" : "#0f172a" }}>
+                {/* Name / rename */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {isRenaming ? (
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <input value={renameText} onChange={(e) => setRenameText(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && saveRename(cat.id)} autoFocus
+                        style={{ ...inputStyle, padding: "5px 10px", fontSize: "13px" }} />
+                      <button onClick={() => saveRename(cat.id)} style={{ padding: "5px 12px", background: "#0095da", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>Save</button>
+                      <button onClick={() => setRenamingCat(null)} style={{ padding: "5px 10px", background: "transparent", border: "1px solid #334155", color: "#94a3b8", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <span style={{ color: "#f1f5f9", fontSize: "14px", fontWeight: "500" }}>{cat.label}</span>
+                      {cat.isCustom && <span style={{ fontSize: "10px", color: "#0095da", background: "#012d5a", padding: "1px 7px", borderRadius: "20px", fontWeight: "600" }}>custom</span>}
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>{catItems.length} items</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                {!isRenaming && (
+                  <div style={{ display: "flex", gap: "5px", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button onClick={() => toggleExpand(cat.id)}
+                      style={{ padding: "4px 10px", background: isExpanded ? "#012d5a" : "transparent", color: isExpanded ? "#33bdef" : "#94a3b8", border: `1px solid ${isExpanded ? "#0095da" : "#334155"}`, borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "600" }}>
+                      {isExpanded ? "▲ Close" : "✏ Edit Items"}
+                    </button>
+                    <button onClick={() => duplicate(cat)} disabled={!!duplicating}
+                      style={{ padding: "4px 10px", background: "transparent", color: "#94a3b8", border: "1px solid #334155", borderRadius: "6px", cursor: duplicating ? "not-allowed" : "pointer", fontSize: "11px" }}>
+                      {isDuplicating ? "..." : "⧉ Duplicate"}
+                    </button>
+                    {cat.isCustom && (
+                      <button onClick={() => { setRenamingCat(cat.id); setRenameText(cat.label); }}
+                        style={{ padding: "4px 10px", background: "transparent", color: "#94a3b8", border: "1px solid #334155", borderRadius: "6px", cursor: "pointer", fontSize: "11px" }}>
+                        Rename
+                      </button>
+                    )}
+                    <button onClick={() => toggle(cat.id)}
+                      style={{ padding: "4px 12px", border: `1px solid ${enabled ? "#4da447" : "#334155"}`, borderRadius: "6px", cursor: "pointer", fontSize: "11px", fontWeight: "700", background: enabled ? "#1a3318" : "#1e293b", color: enabled ? "#7ecb7b" : "#64748b" }}>
+                      {enabled ? "ON" : "OFF"}
+                    </button>
+                    {cat.isCustom && (
+                      <button onClick={() => deleteCustomCat(cat.id)}
+                        style={{ padding: "4px 8px", background: "transparent", color: "#ef4444", border: "1px solid #ef4444", borderRadius: "6px", cursor: "pointer", fontSize: "12px" }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Edit items panel */}
+              {isExpanded && (
+                <div style={{ borderTop: "1px solid #334155", padding: "14px", background: "#060f1e", maxHeight: "420px", overflowY: "auto" }}>
+                  {catItems.length === 0 ? (
+                    <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>No items in this category yet.</p>
+                  ) : (
+                    <>
+                      <p style={{ color: "#64748b", fontSize: "12px", margin: "0 0 12px" }}>
+                        Edits are saved to this project only — other projects are not affected.
+                      </p>
+                      <div style={{ display: "grid", gap: "8px", marginBottom: "14px" }}>
+                        {catItems.map((item, idx) => (
+                          <div key={item.id} style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                            <span style={{ color: "#64748b", fontSize: "11px", paddingTop: "10px", flexShrink: 0, minWidth: "22px", textAlign: "right" }}>{idx + 1}.</span>
+                            <textarea
+                              value={localEdits[item.id] ?? item.item_text}
+                              onChange={(e) => setLocalEdits((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                              rows={2}
+                              style={{ ...inputStyle, fontSize: "13px", resize: "vertical", borderColor: localEdits[item.id] !== undefined ? "#0095da" : "#334155" }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button onClick={saveEdits} disabled={savingEdits || !hasEdits}
+                          style={{ padding: "7px 16px", background: hasEdits ? "#0095da" : "#334155", color: "white", border: "none", borderRadius: "6px", cursor: hasEdits && !savingEdits ? "pointer" : "not-allowed", fontSize: "13px", fontWeight: "600" }}>
+                          {savingEdits ? "Saving..." : hasEdits ? `Save ${Object.keys(localEdits).length} Change(s)` : "No Changes"}
+                        </button>
+                        {hasEdits && (
+                          <button onClick={() => setLocalEdits({})}
+                            style={{ padding: "7px 14px", background: "transparent", border: "1px solid #334155", color: "#94a3b8", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
