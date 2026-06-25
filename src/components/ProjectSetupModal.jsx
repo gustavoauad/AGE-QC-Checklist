@@ -57,9 +57,9 @@ function ChecklistsTab({ project }) {
                 onClick={() => toggle(cat.id)}
                 disabled={saving === cat.id}
                 style={{
-                  padding: "4px 14px", border: `1px solid ${enabled ? "#22c55e" : "#334155"}`,
+                  padding: "4px 14px", border: `1px solid ${enabled ? "#4da447" : "#334155"}`,
                   borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600",
-                  background: enabled ? "#052e16" : "#1e293b", color: enabled ? "#4ade80" : "#64748b",
+                  background: enabled ? "#1a3318" : "#1e293b", color: enabled ? "#7ecb7b" : "#64748b",
                 }}>
                 {saving === cat.id ? "..." : enabled ? "Enabled" : "Disabled"}
               </button>
@@ -211,7 +211,7 @@ function MilestonesTab({ project }) {
 
       {/* Add form */}
       <form onSubmit={add} style={{ background: "#0f172a", borderRadius: "8px", padding: "16px", marginBottom: "24px", border: "1px solid #334155" }}>
-        <p style={{ color: "#60a5fa", fontSize: "13px", fontWeight: "600", margin: "0 0 12px" }}>Add New Milestone</p>
+        <p style={{ color: "#33bdef", fontSize: "13px", fontWeight: "600", margin: "0 0 12px" }}>Add New Milestone</p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "end" }}>
           <div>
             <label style={labelStyle}>Milestone Name</label>
@@ -227,7 +227,7 @@ function MilestonesTab({ project }) {
           </div>
         </div>
         <button type="submit" disabled={saving} style={{
-          marginTop: "12px", padding: "8px 20px", background: "#3b82f6", color: "white",
+          marginTop: "12px", padding: "8px 20px", background: "#0095da", color: "white",
           border: "none", borderRadius: "6px", cursor: saving ? "not-allowed" : "pointer", fontSize: "14px", fontWeight: "600",
         }}>
           {saving ? "Adding..." : "+ Add Milestone"}
@@ -252,7 +252,7 @@ function MilestonesTab({ project }) {
 
             if (isEditing) {
               return (
-                <div key={m.id} style={{ background: "#0f172a", border: "1px solid #3b82f6", borderRadius: "8px", padding: "14px 16px" }}>
+                <div key={m.id} style={{ background: "#0f172a", border: "1px solid #0095da", borderRadius: "8px", padding: "14px 16px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", alignItems: "end", marginBottom: "10px" }}>
                     <div>
                       <label style={labelStyle}>Name</label>
@@ -268,7 +268,7 @@ function MilestonesTab({ project }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => saveEdit(m.id)} disabled={editSaving} style={{ padding: "6px 14px", background: "#22c55e", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}>
+                    <button onClick={() => saveEdit(m.id)} disabled={editSaving} style={{ padding: "6px 14px", background: "#4da447", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}>
                       {editSaving ? "Saving..." : "Save"}
                     </button>
                     <button onClick={cancelEdit} style={{ padding: "6px 14px", background: "transparent", color: "#94a3b8", border: "1px solid #334155", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}>
@@ -285,7 +285,7 @@ function MilestonesTab({ project }) {
                 <div style={{
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                   padding: "12px 16px", background: "#0f172a", borderRadius: isAssigning ? "8px 8px 0 0" : "8px",
-                  border: `1px solid ${isAssigning ? "#3b82f6" : isAlert ? "#f59e0b" : "#334155"}`,
+                  border: `1px solid ${isAssigning ? "#0095da" : isAlert ? "#f59e0b" : "#334155"}`,
                   borderBottom: isAssigning ? "none" : undefined,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
@@ -293,7 +293,7 @@ function MilestonesTab({ project }) {
                     <span style={{ color: "#94a3b8", fontSize: "13px" }}>{new Date(m.date + "T00:00:00").toLocaleDateString()}</span>
                     <span style={{ color: "#64748b", fontSize: "12px" }}>alert {m.days_before_alert}d before</span>
                     {assigned !== undefined && (
-                      <span style={{ fontSize: "11px", color: "#60a5fa", background: "#1e3a5f", padding: "2px 8px", borderRadius: "20px" }}>
+                      <span style={{ fontSize: "11px", color: "#33bdef", background: "#012d5a", padding: "2px 8px", borderRadius: "20px" }}>
                         {assignedCount} items
                       </span>
                     )}
@@ -302,14 +302,14 @@ function MilestonesTab({ project }) {
                   </div>
                   <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
                     <button onClick={() => openAssign(m.id)} style={{
-                      padding: "5px 12px", background: isAssigning ? "#1e3a5f" : "transparent",
-                      color: isAssigning ? "#60a5fa" : "#94a3b8",
-                      border: `1px solid ${isAssigning ? "#3b82f6" : "#334155"}`,
+                      padding: "5px 12px", background: isAssigning ? "#012d5a" : "transparent",
+                      color: isAssigning ? "#33bdef" : "#94a3b8",
+                      border: `1px solid ${isAssigning ? "#0095da" : "#334155"}`,
                       borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600",
                     }}>
                       {isAssigning ? "▲ Assign Items" : "▼ Assign Items"}
                     </button>
-                    <button onClick={() => startEdit(m)} style={{ padding: "5px 12px", background: "#1e3a5f", color: "#60a5fa", border: "1px solid #3b82f6", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+                    <button onClick={() => startEdit(m)} style={{ padding: "5px 12px", background: "#012d5a", color: "#33bdef", border: "1px solid #0095da", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
                       Edit
                     </button>
                     <button onClick={() => remove(m.id)} style={{ padding: "5px 12px", background: "transparent", color: "#ef4444", border: "1px solid #ef4444", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
@@ -320,7 +320,7 @@ function MilestonesTab({ project }) {
 
                 {/* Assignment panel */}
                 {isAssigning && (
-                  <div style={{ border: "1px solid #3b82f6", borderTop: "none", borderRadius: "0 0 8px 8px", background: "#060f1e", padding: "16px", maxHeight: "420px", overflowY: "auto" }}>
+                  <div style={{ border: "1px solid #0095da", borderTop: "none", borderRadius: "0 0 8px 8px", background: "#060f1e", padding: "16px", maxHeight: "420px", overflowY: "auto" }}>
                     {assignLoading ? (
                       <p style={{ color: "#94a3b8", fontSize: "13px" }}>Loading items...</p>
                     ) : (
@@ -330,13 +330,13 @@ function MilestonesTab({ project }) {
                         return (
                           <div key={catId} style={{ marginBottom: "16px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", paddingBottom: "4px", borderBottom: "1px solid #1e293b" }}>
-                              <span style={{ color: "#60a5fa", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                              <span style={{ color: "#33bdef", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                                 {label}
                                 <span style={{ color: "#334155", fontWeight: "400", marginLeft: "6px" }}>({catAssigned.length}/{items.length})</span>
                               </span>
                               <button
                                 onClick={() => selectAllInCategory(m.id, items, !allSelected)}
-                                style={{ fontSize: "11px", color: allSelected ? "#64748b" : "#3b82f6", background: "none", border: "none", cursor: "pointer", fontWeight: "600" }}>
+                                style={{ fontSize: "11px", color: allSelected ? "#64748b" : "#0095da", background: "none", border: "none", cursor: "pointer", fontWeight: "600" }}>
                                 {allSelected ? "Deselect All" : "Select All"}
                               </button>
                             </div>
@@ -353,13 +353,13 @@ function MilestonesTab({ project }) {
                                       type="checkbox"
                                       checked={checked}
                                       onChange={(e) => toggleItem(m.id, item.id, e.target.checked)}
-                                      style={{ marginTop: "3px", flexShrink: 0, accentColor: "#3b82f6" }}
+                                      style={{ marginTop: "3px", flexShrink: 0, accentColor: "#0095da" }}
                                     />
                                     <span style={{ color: checked ? "#f1f5f9" : "#94a3b8", fontSize: "13px", lineHeight: "1.45", flex: 1 }}>
                                       {item.item_text}
                                     </span>
                                     {item.phase && (
-                                      <span style={{ fontSize: "10px", color: "#3b82f6", background: "#1e3a5f", padding: "1px 6px", borderRadius: "4px", flexShrink: 0, alignSelf: "center" }}>
+                                      <span style={{ fontSize: "10px", color: "#0095da", background: "#012d5a", padding: "1px 6px", borderRadius: "4px", flexShrink: 0, alignSelf: "center" }}>
                                         {item.phase}
                                       </span>
                                     )}
@@ -477,7 +477,7 @@ function MembersTab({ project, session }) {
               </select>
             </div>
             <button type="submit" disabled={inviting} style={{
-              padding: "10px 16px", background: "#3b82f6", color: "white", border: "none",
+              padding: "10px 16px", background: "#0095da", color: "white", border: "none",
               borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "600", whiteSpace: "nowrap", flexShrink: 0,
             }}>
               {inviting ? "Inviting..." : "Invite"}
@@ -598,7 +598,7 @@ function CustomItemsTab({ project }) {
             placeholder="Describe what needs to be verified..." style={{ ...inputStyle, resize: "vertical" }} />
         </div>
         <button type="submit" disabled={saving} style={{
-          padding: "8px 16px", background: "#3b82f6", color: "white", border: "none",
+          padding: "8px 16px", background: "#0095da", color: "white", border: "none",
           borderRadius: "6px", cursor: "pointer", fontSize: "14px", fontWeight: "600",
         }}>
           {saving ? "Adding..." : "+ Add Item"}
@@ -616,7 +616,7 @@ function CustomItemsTab({ project }) {
             }}>
               <div style={{ flex: 1 }}>
                 <p style={{ color: "#f1f5f9", fontSize: "14px", margin: "0 0 4px" }}>{item.item_text}</p>
-                <span style={{ fontSize: "12px", color: "#3b82f6" }}>
+                <span style={{ fontSize: "12px", color: "#0095da" }}>
                   {CATEGORIES.find((c) => c.id === item.category)?.label}
                   {item.sub_section ? ` · ${item.sub_section}` : ""}
                   {item.phase ? ` · Phase ${item.phase}` : ""}
@@ -675,7 +675,7 @@ function GeneralTab({ project, onProjectRenamed }) {
         </div>
       )}
       {success && (
-        <div style={{ background: "#052e16", border: "1px solid #22c55e", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", color: "#86efac", fontSize: "13px" }}>
+        <div style={{ background: "#1a3318", border: "1px solid #4da447", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", color: "#a8e0a5", fontSize: "13px" }}>
           ✓ Project updated successfully.
         </div>
       )}
@@ -701,7 +701,7 @@ function GeneralTab({ project, onProjectRenamed }) {
           />
         </div>
         <button type="submit" disabled={saving || !name.trim()} style={{
-          padding: "10px 24px", background: "#3b82f6", color: "white", border: "none",
+          padding: "10px 24px", background: "#0095da", color: "white", border: "none",
           borderRadius: "8px", cursor: saving ? "not-allowed" : "pointer",
           fontSize: "14px", fontWeight: "600",
         }}>
@@ -756,8 +756,8 @@ export default function ProjectSetupModal({ project, session, onClose, onProject
               border: "none", background: "transparent", cursor: "pointer",
               fontSize: isMobile ? "13px" : "14px",
               fontWeight: tab === t ? "600" : "400",
-              color: tab === t ? "#3b82f6" : "#94a3b8",
-              borderBottom: `2px solid ${tab === t ? "#3b82f6" : "transparent"}`,
+              color: tab === t ? "#0095da" : "#94a3b8",
+              borderBottom: `2px solid ${tab === t ? "#0095da" : "transparent"}`,
               marginBottom: "-1px",
               whiteSpace: "nowrap",
               flexShrink: 0,

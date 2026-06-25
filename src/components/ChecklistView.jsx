@@ -160,7 +160,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const overallProgress = totalItems ? Math.round(((completedItems + naItems) / totalItems) * 100) : 0;
 
   const statusColors = {
-    complete: { bg: "#052e16", border: "#22c55e", color: "#4ade80", label: isMobile ? "✓" : "Complete" },
+    complete: { bg: "#1a3318", border: "#4da447", color: "#7ecb7b", label: isMobile ? "✓" : "Complete" },
     na:       { bg: "#1c1917", border: "#78716c", color: "#a8a29e", label: "N/A" },
     pending:  { bg: "#0c1a2e", border: "#334155", color: "#94a3b8", label: isMobile ? "—" : "Pending" },
   };
@@ -239,7 +239,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               )}
             </p>
             {status === "complete" && completedByName && (
-              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#4ade80" }}>
+              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#7ecb7b" }}>
                 ✓ {completedByName} · {formatDate(item.completed_at)}
               </p>
             )}
@@ -248,9 +248,9 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
           {/* Comment toggle */}
           <button onClick={() => toggleComments(item.id)} style={{
             flexShrink: 0,
-            background: isCommentsOpen ? "#1e3a5f" : "transparent",
-            border: `1px solid ${isCommentsOpen ? "#3b82f6" : "#334155"}`,
-            color: isCommentsOpen ? "#60a5fa" : "#64748b",
+            background: isCommentsOpen ? "#012d5a" : "transparent",
+            border: `1px solid ${isCommentsOpen ? "#0095da" : "#334155"}`,
+            color: isCommentsOpen ? "#33bdef" : "#64748b",
             borderRadius: "6px", padding: isMobile ? "5px 8px" : "4px 10px",
             fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
           }}>
@@ -268,7 +268,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 {comments.map((c) => (
                   <div key={c.id} style={{ background: "#1e293b", borderRadius: "8px", padding: "10px 12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "12px", color: "#60a5fa", fontWeight: "600" }}>
+                      <span style={{ fontSize: "12px", color: "#33bdef", fontWeight: "600" }}>
                         {profilesMap[c.user_id]?.full_name || "Unknown"}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -297,7 +297,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 style={{ flex: 1, padding: "8px 12px", background: "#1e293b", border: "1px solid #334155", borderRadius: "6px", color: "#f1f5f9", fontSize: "13px" }}
               />
               <button onClick={() => submitComment(item.id)} disabled={addingComment || !commentText.trim()}
-                style={{ padding: "8px 14px", background: "#3b82f6", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}>
+                style={{ padding: "8px 14px", background: "#0095da", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "600" }}>
                 Send
               </button>
             </div>
@@ -310,8 +310,8 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const renderSection = (subSection, items) => (
     <div key={subSection} style={{ marginBottom: "20px" }}>
       {subSection !== "General" && (
-        <div style={{ background: "#1e293b", borderLeft: "3px solid #3b82f6", padding: "7px 14px", marginBottom: "8px", borderRadius: "0 6px 6px 0" }}>
-          <span style={{ color: "#60a5fa", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>{subSection}</span>
+        <div style={{ background: "#1e293b", borderLeft: "3px solid #0095da", padding: "7px 14px", marginBottom: "8px", borderRadius: "0 6px 6px 0" }}>
+          <span style={{ color: "#33bdef", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>{subSection}</span>
         </div>
       )}
       <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155", overflow: "hidden" }}>
@@ -343,7 +343,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
         {items.map((item) => (
           <button key={item.id} onClick={item.onClick} style={{
             flexShrink: 0, padding: "6px 12px", border: "none", borderRadius: "20px",
-            background: item.active ? "#3b82f6" : "#0f172a",
+            background: item.active ? "#0095da" : "#0f172a",
             color: item.active ? "white" : "#94a3b8",
             fontSize: "12px", fontWeight: item.active ? "600" : "400", cursor: "pointer",
             whiteSpace: "nowrap",
@@ -356,7 +356,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter, sans-serif", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Manrope, sans-serif", display: "flex", flexDirection: "column" }}>
 
       {/* Header */}
       <div style={{ background: "#1e293b", borderBottom: "1px solid #334155", padding: isMobile ? "12px 16px" : "16px 24px" }}>
@@ -393,8 +393,8 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
           <button key={id} onClick={() => handleViewModeToggle(id)} style={{
             padding: "10px 16px", border: "none", background: "transparent", cursor: "pointer",
             fontSize: "13px", fontWeight: viewMode === id ? "600" : "400",
-            color: viewMode === id ? "#3b82f6" : "#64748b",
-            borderBottom: `2px solid ${viewMode === id ? "#3b82f6" : "transparent"}`,
+            color: viewMode === id ? "#0095da" : "#64748b",
+            borderBottom: `2px solid ${viewMode === id ? "#0095da" : "transparent"}`,
           }}>
             {label}
           </button>
@@ -418,12 +418,12 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   <button key={cat.id} onClick={() => setActiveCategory(cat.id)} style={{
                     width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "8px 10px", marginBottom: "4px", border: "none", borderRadius: "8px",
-                    background: isActive ? "#3b82f6" : "transparent",
+                    background: isActive ? "#0095da" : "transparent",
                     color: isActive ? "white" : canEdit(cat.id) ? "#f1f5f9" : "#64748b",
                     cursor: "pointer", fontSize: "13px", textAlign: "left",
                   }}>
                     <span style={{ flex: 1 }}>{cat.label}</span>
-                    <span style={{ fontSize: "11px", fontWeight: "600", color: isActive ? "white" : progress === 100 ? "#4ade80" : "#94a3b8" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "600", color: isActive ? "white" : progress === 100 ? "#7ecb7b" : "#94a3b8" }}>
                       {progress}%
                     </span>
                   </button>
@@ -441,12 +441,12 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   return (
                     <button key={m.id} onClick={() => switchToMilestone(m.id)} style={{
                       width: "100%", padding: "10px", marginBottom: "6px", border: "none", borderRadius: "8px",
-                      background: isActive ? "#3b82f6" : "transparent",
+                      background: isActive ? "#0095da" : "transparent",
                       color: isActive ? "white" : "#f1f5f9", cursor: "pointer", textAlign: "left",
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                         <span style={{ fontSize: "13px", fontWeight: "600" }}>{m.name}</span>
-                        <span style={{ fontSize: "11px", fontWeight: "600", color: isActive ? "white" : progress === 100 ? "#4ade80" : "#94a3b8" }}>
+                        <span style={{ fontSize: "11px", fontWeight: "600", color: isActive ? "white" : progress === 100 ? "#7ecb7b" : "#94a3b8" }}>
                           {milestoneItemsCache[m.id] ? `${progress}%` : ""}
                         </span>
                       </div>
@@ -511,7 +511,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                           {isAlert && <span style={{ fontSize: "12px", color: "#f59e0b", background: "#451a03", padding: "2px 10px", borderRadius: "20px" }}>⚠ {daysUntil}d remaining</span>}
                         </div>
                       </div>
-                      <span style={{ color: pct === 100 ? "#4ade80" : "#f1f5f9", fontSize: "28px", fontWeight: "700" }}>{pct}%</span>
+                      <span style={{ color: pct === 100 ? "#7ecb7b" : "#f1f5f9", fontSize: "28px", fontWeight: "700" }}>{pct}%</span>
                     </div>
                   );
                 })()}

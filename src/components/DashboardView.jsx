@@ -98,14 +98,14 @@ export default function DashboardView({ session, onBack, onSignOut }) {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Manrope, sans-serif" }}>
         Loading dashboard...
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Manrope, sans-serif" }}>
       {/* Header */}
       <div style={{ background: "#1e293b", borderBottom: "1px solid #334155", padding: isMobile ? "12px 16px" : "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -124,10 +124,10 @@ export default function DashboardView({ session, onBack, onSignOut }) {
         {/* Overall stat cards */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: "12px", marginBottom: "24px" }}>
           {[
-            { label: "Projects", value: projects.length, color: "#3b82f6" },
-            { label: "Overall Progress", value: `${overallPct}%`, color: overallPct === 100 ? "#4ade80" : "#f1f5f9" },
-            { label: "Done / N/A", value: overall.complete + overall.na, color: "#4ade80" },
-            { label: "Pending", value: overall.pending, color: overall.pending === 0 ? "#4ade80" : "#f59e0b" },
+            { label: "Projects", value: projects.length, color: "#0095da" },
+            { label: "Overall Progress", value: `${overallPct}%`, color: overallPct === 100 ? "#7ecb7b" : "#f1f5f9" },
+            { label: "Done / N/A", value: overall.complete + overall.na, color: "#7ecb7b" },
+            { label: "Pending", value: overall.pending, color: overall.pending === 0 ? "#7ecb7b" : "#f59e0b" },
           ].map((stat) => (
             <div key={stat.label} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
               <p style={{ margin: "0 0 6px", color: "#94a3b8", fontSize: "12px" }}>{stat.label}</p>
@@ -152,7 +152,7 @@ export default function DashboardView({ session, onBack, onSignOut }) {
                   formatter={(val) => `${val}%`}
                 />
                 <Legend wrapperStyle={{ color: "#94a3b8", fontSize: "12px" }} />
-                <Bar dataKey="Complete" stackId="a" fill="#22c55e" />
+                <Bar dataKey="Complete" stackId="a" fill="#4da447" />
                 <Bar dataKey="N/A" stackId="a" fill="#78716c" />
                 <Bar dataKey="Pending" stackId="a" fill="#334155" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -225,7 +225,7 @@ export default function DashboardView({ session, onBack, onSignOut }) {
                     </p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                    <span style={{ color: pct === 100 ? "#4ade80" : "#f1f5f9", fontSize: "24px", fontWeight: "700" }}>
+                    <span style={{ color: pct === 100 ? "#7ecb7b" : "#f1f5f9", fontSize: "24px", fontWeight: "700" }}>
                       {pct}%
                     </span>
                     <span style={{ color: "#64748b", fontSize: "12px" }}>{isExpanded ? "▲" : "▼"}</span>
@@ -233,7 +233,7 @@ export default function DashboardView({ session, onBack, onSignOut }) {
                 </div>
 
                 <div style={{ height: "4px", background: "#0f172a", margin: "0 20px 16px" }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#22c55e" : "#3b82f6", borderRadius: "2px", transition: "width 0.3s" }} />
+                  <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#4da447" : "#0095da", borderRadius: "2px", transition: "width 0.3s" }} />
                 </div>
 
                 {isExpanded && (
@@ -246,12 +246,12 @@ export default function DashboardView({ session, onBack, onSignOut }) {
                           <div key={cat.id}>
                             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                               <span style={{ color: "#94a3b8", fontSize: "13px" }}>{cat.label}</span>
-                              <span style={{ color: catPct === 100 ? "#4ade80" : "#94a3b8", fontSize: "12px", fontWeight: "600" }}>
+                              <span style={{ color: catPct === 100 ? "#7ecb7b" : "#94a3b8", fontSize: "12px", fontWeight: "600" }}>
                                 {catPct}% ({cs.done}/{cs.total})
                               </span>
                             </div>
                             <div style={{ height: "4px", background: "#0f172a", borderRadius: "2px" }}>
-                              <div style={{ height: "100%", width: `${catPct}%`, background: catPct === 100 ? "#22c55e" : "#3b82f6", borderRadius: "2px" }} />
+                              <div style={{ height: "100%", width: `${catPct}%`, background: catPct === 100 ? "#4da447" : "#0095da", borderRadius: "2px" }} />
                             </div>
                           </div>
                         );

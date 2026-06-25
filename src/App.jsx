@@ -32,7 +32,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontFamily: "Manrope, sans-serif" }}>
         Loading...
       </div>
     );

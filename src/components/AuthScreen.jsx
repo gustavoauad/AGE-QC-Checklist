@@ -49,13 +49,17 @@ export default function AuthScreen() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Manrope, sans-serif" }}>
       <div style={{ background: "#1e293b", borderRadius: "12px", padding: "40px", width: "100%", maxWidth: "400px", boxShadow: "0 4px 24px rgba(0,0,0,0.4)" }}>
         
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "32px" }}>
-          <h1 style={{ color: "#f1f5f9", fontSize: "24px", fontWeight: "700", margin: 0 }}>AGE-QC-Checklist</h1>
-          <p style={{ color: "#94a3b8", fontSize: "14px", marginTop: "8px" }}>Structural QA Management</p>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "2px", marginBottom: "10px" }}>
+            <span style={{ fontSize: "32px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-1px" }}>AG</span>
+            <span style={{ fontSize: "32px", fontWeight: "800", color: "#0095da", letterSpacing: "-1px" }}>/</span>
+            <span style={{ fontSize: "32px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-1px" }}>E</span>
+          </div>
+          <p style={{ color: "#94a3b8", fontSize: "13px", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: "600" }}>QC Checklist</p>
         </div>
 
         {/* Tabs */}
@@ -63,7 +67,7 @@ export default function AuthScreen() {
           {["login", "register"].map((m) => (
             <button key={m}
               onClick={() => { setMode(m); setError(""); setMessage(""); }}
-              style={{ flex: 1, padding: "8px", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", fontSize: "14px", background: mode === m ? "#3b82f6" : "transparent", color: mode === m ? "white" : "#94a3b8" }}>
+              style={{ flex: 1, padding: "8px", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", fontSize: "14px", background: mode === m ? "#0095da" : "transparent", color: mode === m ? "white" : "#94a3b8" }}>
               {m === "login" ? "Sign In" : "Register"}
             </button>
           ))}
@@ -76,7 +80,7 @@ export default function AuthScreen() {
           </div>
         )}
         {message && (
-          <div style={{ background: "#052e16", border: "1px solid #22c55e", borderRadius: "8px", padding: "12px", marginBottom: "16px", color: "#86efac", fontSize: "14px" }}>
+          <div style={{ background: "#1a3318", border: "1px solid #4da447", borderRadius: "8px", padding: "12px", marginBottom: "16px", color: "#a8e0a5", fontSize: "14px" }}>
             {message}
           </div>
         )}
@@ -98,7 +102,7 @@ export default function AuthScreen() {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" style={inputStyle} />
           </div>
           <button type="submit" disabled={loading}
-            style={{ width: "100%", padding: "12px", background: loading ? "#1d4ed8" : "#3b82f6", color: "white", border: "none", borderRadius: "8px", fontSize: "16px", fontWeight: "600", cursor: loading ? "not-allowed" : "pointer" }}>
+            style={{ width: "100%", padding: "12px", background: loading ? "#007ab8" : "#0095da", color: "white", border: "none", borderRadius: "8px", fontSize: "16px", fontWeight: "600", cursor: loading ? "not-allowed" : "pointer" }}>
             {loading ? "Please wait..." : mode === "login" ? "Sign In" : "Create Account"}
           </button>
         </form>

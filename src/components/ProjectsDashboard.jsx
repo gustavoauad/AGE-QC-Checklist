@@ -5,7 +5,7 @@ import CreateProjectModal from "./CreateProjectModal";
 import ProjectSetupModal from "./ProjectSetupModal";
 
 const roleColors = {
-  project_manager: { bg: "#1e3a5f", color: "#60a5fa", label: "Project Manager" },
+  project_manager: { bg: "#012d5a", color: "#33bdef", label: "Project Manager" },
   engineer: { bg: "#1a3a2a", color: "#4ade80", label: "Engineer" },
   drafter: { bg: "#3a1a3a", color: "#c084fc", label: "Drafter" },
 };
@@ -49,7 +49,7 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Manrope, sans-serif" }}>
 
       {/* Header */}
       <div style={{
@@ -57,9 +57,12 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
         padding: isMobile ? "12px 16px" : "16px 24px",
         display: "flex", justifyContent: "space-between", alignItems: "center",
       }}>
-        <h1 style={{ margin: 0, fontSize: isMobile ? "16px" : "20px", fontWeight: "700", color: "#f1f5f9" }}>
-          AGE-QC-Checklist
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+          <span style={{ fontSize: isMobile ? "18px" : "22px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-0.5px" }}>AG</span>
+          <span style={{ fontSize: isMobile ? "18px" : "22px", fontWeight: "800", color: "#0095da", letterSpacing: "-0.5px" }}>/</span>
+          <span style={{ fontSize: isMobile ? "18px" : "22px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-0.5px" }}>E</span>
+          {!isMobile && <span style={{ marginLeft: "10px", fontSize: "14px", color: "#777f8f", fontWeight: "500" }}>QC Checklist</span>}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "8px" : "12px" }}>
           <button onClick={onShowDashboard} style={{
             padding: isMobile ? "6px 10px" : "8px 16px",
@@ -91,13 +94,13 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
             <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: "13px" }}>
               {projects.length} project{projects.length !== 1 ? "s" : ""}
               {isMobile && profile?.full_name && (
-                <span style={{ marginLeft: "8px", color: "#60a5fa" }}>· {profile.full_name}</span>
+                <span style={{ marginLeft: "8px", color: "#33bdef" }}>· {profile.full_name}</span>
               )}
             </p>
           </div>
           <button onClick={() => setShowCreate(true)} style={{
             padding: isMobile ? "8px 14px" : "10px 20px",
-            background: "#3b82f6", color: "white", border: "none",
+            background: "#0095da", color: "white", border: "none",
             borderRadius: "8px", fontSize: isMobile ? "13px" : "14px", fontWeight: "600", cursor: "pointer",
             flexShrink: 0,
           }}>
@@ -119,7 +122,7 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
                 key={project.id}
                 onClick={() => onSelectProject(project, role)}
                 style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: isMobile ? "16px" : "24px", cursor: "pointer" }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = "#3b82f6"}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = "#0095da"}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = "#334155"}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -143,7 +146,7 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
                       <div style={{ display: "flex", gap: "6px" }}>
                         <button
                           onClick={(e) => { e.stopPropagation(); setSetupProject({ project, role }); }}
-                          style={{ padding: "5px 10px", background: "#1e3a5f", color: "#60a5fa", border: "1px solid #3b82f6", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}>
+                          style={{ padding: "5px 10px", background: "#012d5a", color: "#33bdef", border: "1px solid #0095da", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}>
                           ⚙ Setup
                         </button>
                         <button
