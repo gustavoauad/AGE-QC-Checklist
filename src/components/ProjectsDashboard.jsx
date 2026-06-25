@@ -188,6 +188,7 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
         <ProjectSetupModal
           project={setupProject.project}
           session={session}
+          userRole={setupProject.role}
           onClose={() => setSetupProject(null)}
           onProjectRenamed={(newName, newDesc) => {
             setProjects((prev) => prev.map((p) =>

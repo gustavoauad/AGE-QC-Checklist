@@ -553,7 +553,7 @@ function MilestonesTab({ project }) {
 }
 
 // ── Members tab ────────────────────────────────────────────────────────────
-function MembersTab({ project, session }) {
+function MembersTab({ project, session, userRole }) {
   const [members, setMembers] = useState([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("engineer");
@@ -805,13 +805,14 @@ function MembersTab({ project, session }) {
                 {m.user_id === session.user.id && <span style={{ color: "#64748b", fontSize: "11px", marginLeft: "6px" }}>(you)</span>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <select value={m.role} onChange={(e) => updateRole(m.id, e.target.value)} disabled={m.user_id === session.user.id}
+                <select value={m.role} onChange={(e) => updateRole(m.id, e.target.value)}
+                  disabled={userRole !== "project_manager" || m.user_id === session.user.id}
                   style={{ background: "#1e293b", border: "1px solid #334155", color: "#f1f5f9", borderRadius: "6px", padding: "5px 8px", fontSize: "12px" }}>
                   <option value="project_manager">Project Manager</option>
                   <option value="engineer">Engineer</option>
                   <option value="drafter">Drafter</option>
                 </select>
-                {m.user_id !== session.user.id && (
+                {userRole === "project_manager" && m.user_id !== session.user.id && (
                   <button onClick={() => removeMember(m.id)} style={{ background: "none", border: "1px solid #334155", color: "#ef4444", cursor: "pointer", padding: "5px 10px", borderRadius: "6px", fontSize: "12px" }}>
                     Remove
                   </button>
@@ -1010,7 +1011,7 @@ function GeneralTab({ project, onProjectRenamed }) {
 const TABS = ["General", "Checklists", "Milestones", "Members", "Custom Items"];
 const TAB_SHORT = ["General", "Lists", "Miles.", "Members", "Custom"];
 
-export default function ProjectSetupModal({ project, session, onClose, onProjectRenamed }) {
+export default function ProjectSetupModal({ project, session, userRole, onClose, onProjectRenamed }) {
   const isMobile = useIsMobile();
   const [tab, setTab] = useState("General");
   const [projectName, setProjectName] = useState(project.name);
@@ -1066,7 +1067,7 @@ export default function ProjectSetupModal({ project, session, onClose, onProject
           {tab === "General" && <GeneralTab project={{ ...project, name: projectName }} onProjectRenamed={handleRenamed} />}
           {tab === "Checklists" && <ChecklistsTab project={project} />}
           {tab === "Milestones" && <MilestonesTab project={project} />}
-          {tab === "Members" && <MembersTab project={project} session={session} />}
+          {tab === "Members" && <MembersTab project={project} session={session} userRole={userRole} />}
           {tab === "Custom Items" && <CustomItemsTab project={project} />}
         </div>
       </div>
