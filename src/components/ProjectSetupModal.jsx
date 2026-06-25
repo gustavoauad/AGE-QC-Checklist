@@ -609,14 +609,44 @@ function MembersTab({ project, session }) {
     setInviting(true);
     setError("");
 
+    const trimmedEmail = email.toLowerCase().trim();
+    const inviterName = myProfile?.full_name || session.user.email;
+    const appBase = window.location.origin + window.location.pathname;
+
     const { data: found } = await supabase.from("profiles")
-      .select("id, full_name, email").eq("email", email.toLowerCase().trim()).single();
+      .select("id, full_name, email").eq("email", trimmedEmail).single();
 
     if (!found) {
-      setError("No registered user found with that email. Share the QR code below so they can join after registering.");
+      // User not registered — generate an invite token and email them the join link
+      const { data: tokenRow } = await supabase.from("project_invite_tokens")
+        .insert({ project_id: project.id, role, created_by: session.user.id })
+        .select().single();
+
+      if (tokenRow) {
+        const inviteUrl = `${appBase}?invite=${tokenRow.token}`;
+        try {
+          await supabase.functions.invoke("send-invite-email", {
+            body: {
+              to: trimmedEmail,
+              inviteeName: null,
+              inviterName,
+              projectName: project.name,
+              role,
+              appUrl: inviteUrl,
+              isNewUser: true,
+            },
+          });
+        } catch (_) { /* silent */ }
+      }
+
+      setError("");
       setInviting(false);
+      setEmail("");
+      // Show success info instead of error
+      alert(`"${trimmedEmail}" is not registered yet. An invitation email has been sent with a link to join "${project.name}" after signing up.`);
       return;
     }
+
     if (members.find((m) => m.user_id === found.id)) {
       setError("This user is already a member of this project.");
       setInviting(false);
@@ -630,7 +660,6 @@ function MembersTab({ project, session }) {
     if (err) { setError(err.message); setInviting(false); return; }
 
     // In-app notification for the invitee
-    const inviterName = myProfile?.full_name || session.user.email;
     await supabase.from("notifications").insert({
       user_id: found.id,
       project_id: project.id,
@@ -639,19 +668,20 @@ function MembersTab({ project, session }) {
       body: `${inviterName} added you as ${role.replace(/_/g, " ")}. Open your projects to get started.`,
     });
 
-    // Try to send email via edge function (optional — fails silently if not deployed)
+    // Email the registered user too
     try {
       await supabase.functions.invoke("send-invite-email", {
         body: {
-          to: found.email || email,
+          to: found.email || trimmedEmail,
           inviteeName: found.full_name,
           inviterName,
           projectName: project.name,
           role,
-          appUrl: window.location.origin + window.location.pathname,
+          appUrl: appBase,
+          isNewUser: false,
         },
       });
-    } catch (_) { /* Edge function not deployed — ignore */ }
+    } catch (_) { /* silent */ }
 
     setEmail("");
     fetchMembers();
