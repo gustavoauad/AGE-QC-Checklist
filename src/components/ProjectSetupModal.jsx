@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { CATEGORIES } from "../checklistTemplate";
+import { useIsMobile } from "../useIsMobile";
 
 const inputStyle = {
   width: "100%", padding: "10px 12px", background: "#0f172a",
@@ -211,7 +212,7 @@ function MilestonesTab({ project }) {
       {/* Add form */}
       <form onSubmit={add} style={{ background: "#0f172a", borderRadius: "8px", padding: "16px", marginBottom: "24px", border: "1px solid #334155" }}>
         <p style={{ color: "#60a5fa", fontSize: "13px", fontWeight: "600", margin: "0 0 12px" }}>Add New Milestone</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px", gap: "12px", alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px", alignItems: "end" }}>
           <div>
             <label style={labelStyle}>Milestone Name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. SD Submission" style={inputStyle} />
@@ -252,7 +253,7 @@ function MilestonesTab({ project }) {
             if (isEditing) {
               return (
                 <div key={m.id} style={{ background: "#0f172a", border: "1px solid #3b82f6", borderRadius: "8px", padding: "14px 16px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px", gap: "10px", alignItems: "end", marginBottom: "10px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", alignItems: "end", marginBottom: "10px" }}>
                     <div>
                       <label style={labelStyle}>Name</label>
                       <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} />
@@ -460,26 +461,28 @@ function MembersTab({ project, session }) {
             {error}
           </div>
         )}
-        <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ display: "grid", gap: "12px" }}>
+          <div>
             <label style={labelStyle}>Email address</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
               placeholder="colleague@example.com" style={inputStyle} />
           </div>
-          <div>
-            <label style={labelStyle}>Role</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...inputStyle, width: "170px" }}>
-              <option value="project_manager">Project Manager</option>
-              <option value="engineer">Engineer</option>
-              <option value="drafter">Drafter</option>
-            </select>
+          <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Role</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
+                <option value="project_manager">Project Manager</option>
+                <option value="engineer">Engineer</option>
+                <option value="drafter">Drafter</option>
+              </select>
+            </div>
+            <button type="submit" disabled={inviting} style={{
+              padding: "10px 16px", background: "#3b82f6", color: "white", border: "none",
+              borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "600", whiteSpace: "nowrap", flexShrink: 0,
+            }}>
+              {inviting ? "Inviting..." : "Invite"}
+            </button>
           </div>
-          <button type="submit" disabled={inviting} style={{
-            padding: "10px 16px", background: "#3b82f6", color: "white", border: "none",
-            borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "600", whiteSpace: "nowrap",
-          }}>
-            {inviting ? "Inviting..." : "Invite"}
-          </button>
         </div>
       </form>
 
@@ -711,8 +714,10 @@ function GeneralTab({ project, onProjectRenamed }) {
 
 // ── Main modal ─────────────────────────────────────────────────────────────
 const TABS = ["General", "Checklists", "Milestones", "Members", "Custom Items"];
+const TAB_SHORT = ["General", "Lists", "Miles.", "Members", "Custom"];
 
 export default function ProjectSetupModal({ project, session, onClose, onProjectRenamed }) {
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState("General");
   const [projectName, setProjectName] = useState(project.name);
 
@@ -722,39 +727,48 @@ export default function ProjectSetupModal({ project, session, onClose, onProject
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center", zIndex: 100 }}>
       <div style={{
-        background: "#1e293b", borderRadius: "16px", width: "100%", maxWidth: "760px",
-        maxHeight: "88vh", display: "flex", flexDirection: "column",
+        background: "#1e293b",
+        borderRadius: isMobile ? "16px 16px 0 0" : "16px",
+        width: "100%",
+        maxWidth: isMobile ? "100%" : "760px",
+        height: isMobile ? "92vh" : undefined,
+        maxHeight: isMobile ? "92vh" : "88vh",
+        display: "flex", flexDirection: "column",
         boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
       }}>
         {/* Header */}
-        <div style={{ padding: "24px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ color: "#f1f5f9", margin: 0, fontSize: "18px", fontWeight: "700" }}>
-            ⚙ Project Setup — {projectName}
+        <div style={{ padding: isMobile ? "16px 16px 0" : "24px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ color: "#f1f5f9", margin: 0, fontSize: isMobile ? "15px" : "18px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: isMobile ? "240px" : undefined }}>
+            ⚙ {isMobile ? projectName : `Project Setup — ${projectName}`}
           </h2>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "26px", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "26px", cursor: "pointer", lineHeight: 1, padding: "0 4px", flexShrink: 0 }}>
             ×
           </button>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: "2px", padding: "16px 24px 0", borderBottom: "1px solid #334155" }}>
-          {TABS.map((t) => (
+        {/* Tabs — scrollable on mobile */}
+        <div style={{ display: "flex", padding: isMobile ? "12px 16px 0" : "16px 24px 0", borderBottom: "1px solid #334155", overflowX: "auto" }}>
+          {TABS.map((t, i) => (
             <button key={t} onClick={() => setTab(t)} style={{
-              padding: "8px 16px", border: "none", background: "transparent", cursor: "pointer",
-              fontSize: "14px", fontWeight: tab === t ? "600" : "400",
+              padding: isMobile ? "7px 12px" : "8px 16px",
+              border: "none", background: "transparent", cursor: "pointer",
+              fontSize: isMobile ? "13px" : "14px",
+              fontWeight: tab === t ? "600" : "400",
               color: tab === t ? "#3b82f6" : "#94a3b8",
               borderBottom: `2px solid ${tab === t ? "#3b82f6" : "transparent"}`,
               marginBottom: "-1px",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}>
-              {t}
+              {isMobile ? TAB_SHORT[i] : t}
             </button>
           ))}
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px" : "24px" }}>
           {tab === "General" && <GeneralTab project={{ ...project, name: projectName }} onProjectRenamed={handleRenamed} />}
           {tab === "Checklists" && <ChecklistsTab project={project} />}
           {tab === "Milestones" && <MilestonesTab project={project} />}

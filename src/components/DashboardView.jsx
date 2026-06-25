@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { CATEGORIES } from "../checklistTemplate";
+import { useIsMobile } from "../useIsMobile";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
 export default function DashboardView({ session, onBack, onSignOut }) {
+  const isMobile = useIsMobile();
   const [projects, setProjects] = useState([]);
   const [stats, setStats] = useState({});
   const [categoryStats, setCategoryStats] = useState({});
@@ -105,46 +107,46 @@ export default function DashboardView({ session, onBack, onSignOut }) {
   return (
     <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter, sans-serif" }}>
       {/* Header */}
-      <div style={{ background: "#1e293b", borderBottom: "1px solid #334155", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button onClick={onBack} style={{ background: "#334155", color: "#f1f5f9", border: "none", borderRadius: "6px", padding: "6px 12px", cursor: "pointer", fontSize: "14px" }}>
-            ← Projects
+      <div style={{ background: "#1e293b", borderBottom: "1px solid #334155", padding: isMobile ? "12px 16px" : "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button onClick={onBack} style={{ background: "#334155", color: "#f1f5f9", border: "none", borderRadius: "6px", padding: "6px 10px", cursor: "pointer", fontSize: "13px" }}>
+            ←
           </button>
-          <h1 style={{ margin: 0, fontSize: "18px", fontWeight: "700", color: "#f1f5f9" }}>Dashboard</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? "15px" : "18px", fontWeight: "700", color: "#f1f5f9" }}>Dashboard</h1>
         </div>
-        <button onClick={onSignOut} style={{ padding: "8px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
-          Sign Out
+        <button onClick={onSignOut} style={{ padding: isMobile ? "6px 10px" : "8px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: isMobile ? "13px" : "14px" }}>
+          {isMobile ? "↩" : "Sign Out"}
         </button>
       </div>
 
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: isMobile ? "20px 16px" : "32px 24px" }}>
 
         {/* Overall stat cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "32px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: "12px", marginBottom: "24px" }}>
           {[
             { label: "Projects", value: projects.length, color: "#3b82f6" },
             { label: "Overall Progress", value: `${overallPct}%`, color: overallPct === 100 ? "#4ade80" : "#f1f5f9" },
-            { label: "Items Done / N/A", value: overall.complete + overall.na, color: "#4ade80" },
-            { label: "Pending Items", value: overall.pending, color: overall.pending === 0 ? "#4ade80" : "#f59e0b" },
+            { label: "Done / N/A", value: overall.complete + overall.na, color: "#4ade80" },
+            { label: "Pending", value: overall.pending, color: overall.pending === 0 ? "#4ade80" : "#f59e0b" },
           ].map((stat) => (
-            <div key={stat.label} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "20px" }}>
-              <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: "13px" }}>{stat.label}</p>
-              <p style={{ margin: 0, color: stat.color, fontSize: "28px", fontWeight: "700" }}>{stat.value}</p>
+            <div key={stat.label} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: isMobile ? "14px" : "20px" }}>
+              <p style={{ margin: "0 0 6px", color: "#94a3b8", fontSize: "12px" }}>{stat.label}</p>
+              <p style={{ margin: 0, color: stat.color, fontSize: isMobile ? "22px" : "28px", fontWeight: "700" }}>{stat.value}</p>
             </div>
           ))}
         </div>
 
         {/* Bar chart */}
         {projects.length > 0 && (
-          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px", marginBottom: "32px" }}>
-            <h2 style={{ color: "#f1f5f9", margin: "0 0 20px", fontSize: "16px", fontWeight: "600" }}>
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: isMobile ? "16px" : "24px", marginBottom: "24px" }}>
+            <h2 style={{ color: "#f1f5f9", margin: "0 0 16px", fontSize: "15px", fontWeight: "600" }}>
               Progress by Project (%)
             </h2>
-            <ResponsiveContainer width="100%" height={Math.max(180, projects.length * 48)}>
-              <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30, top: 0, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={Math.max(160, projects.length * (isMobile ? 40 : 48))}>
+              <BarChart data={chartData} layout="vertical" margin={{ left: isMobile ? 0 : 10, right: 30, top: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 12 }} width={130} />
+                <XAxis type="number" domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }} tickFormatter={(v) => `${v}%`} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: isMobile ? 10 : 12 }} width={isMobile ? 90 : 130} />
                 <Tooltip
                   contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "8px", color: "#f1f5f9" }}
                   formatter={(val) => `${val}%`}

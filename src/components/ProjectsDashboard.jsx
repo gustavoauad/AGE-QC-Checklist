@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
+import { useIsMobile } from "../useIsMobile";
 import CreateProjectModal from "./CreateProjectModal";
 import ProjectSetupModal from "./ProjectSetupModal";
 
@@ -10,6 +11,7 @@ const roleColors = {
 };
 
 export default function ProjectsDashboard({ session, onSelectProject, onSignOut, onShowDashboard }) {
+  const isMobile = useIsMobile();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -50,85 +52,107 @@ export default function ProjectsDashboard({ session, onSelectProject, onSignOut,
     <div style={{ minHeight: "100vh", background: "#0f172a", fontFamily: "Inter, sans-serif" }}>
 
       {/* Header */}
-      <div style={{ background: "#1e293b", borderBottom: "1px solid #334155", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0, fontSize: "20px", fontWeight: "700", color: "#f1f5f9" }}>
+      <div style={{
+        background: "#1e293b", borderBottom: "1px solid #334155",
+        padding: isMobile ? "12px 16px" : "16px 24px",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      }}>
+        <h1 style={{ margin: 0, fontSize: isMobile ? "16px" : "20px", fontWeight: "700", color: "#f1f5f9" }}>
           AGE-QC-Checklist
         </h1>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button
-            onClick={onShowDashboard}
-            style={{ padding: "8px 16px", background: "#1e293b", color: "#94a3b8", border: "1px solid #334155", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
-            📊 Dashboard
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? "8px" : "12px" }}>
+          <button onClick={onShowDashboard} style={{
+            padding: isMobile ? "6px 10px" : "8px 16px",
+            background: "#1e293b", color: "#94a3b8", border: "1px solid #334155",
+            borderRadius: "6px", cursor: "pointer", fontSize: isMobile ? "13px" : "14px",
+          }}>
+            {isMobile ? "📊" : "📊 Dashboard"}
           </button>
-          <span style={{ color: "#94a3b8", fontSize: "14px" }}>
-            {profile?.full_name || session.user.email}
-          </span>
-          <button onClick={onSignOut} style={{ padding: "8px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "14px" }}>
-            Sign Out
+          {!isMobile && (
+            <span style={{ color: "#94a3b8", fontSize: "14px" }}>
+              {profile?.full_name || session.user.email}
+            </span>
+          )}
+          <button onClick={onSignOut} style={{
+            padding: isMobile ? "6px 10px" : "8px 16px",
+            background: "#ef4444", color: "white", border: "none",
+            borderRadius: "6px", cursor: "pointer", fontSize: isMobile ? "13px" : "14px",
+          }}>
+            {isMobile ? "↩" : "Sign Out"}
           </button>
         </div>
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: "900px", margin: "0 auto", padding: "40px 24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto", padding: isMobile ? "20px 16px" : "40px 24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", gap: "12px" }}>
           <div>
-            <h2 style={{ color: "#f1f5f9", margin: 0, fontSize: "24px" }}>My Projects</h2>
-            <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: "14px" }}>
+            <h2 style={{ color: "#f1f5f9", margin: 0, fontSize: isMobile ? "18px" : "24px" }}>My Projects</h2>
+            <p style={{ color: "#94a3b8", margin: "4px 0 0", fontSize: "13px" }}>
               {projects.length} project{projects.length !== 1 ? "s" : ""}
+              {isMobile && profile?.full_name && (
+                <span style={{ marginLeft: "8px", color: "#60a5fa" }}>· {profile.full_name}</span>
+              )}
             </p>
           </div>
-          <button onClick={() => setShowCreate(true)} style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: "8px", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>
-            + New Project
+          <button onClick={() => setShowCreate(true)} style={{
+            padding: isMobile ? "8px 14px" : "10px 20px",
+            background: "#3b82f6", color: "white", border: "none",
+            borderRadius: "8px", fontSize: isMobile ? "13px" : "14px", fontWeight: "600", cursor: "pointer",
+            flexShrink: 0,
+          }}>
+            {isMobile ? "+ New" : "+ New Project"}
           </button>
         </div>
 
         {loading ? (
           <p style={{ color: "#94a3b8", textAlign: "center" }}>Loading projects...</p>
         ) : projects.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "80px 0" }}>
-            <p style={{ color: "#94a3b8", fontSize: "18px" }}>No projects yet.</p>
-            <p style={{ color: "#64748b", fontSize: "14px" }}>
-              Create a new project or wait for an invitation from a Project Manager.
-            </p>
+          <div style={{ textAlign: "center", padding: "60px 0" }}>
+            <p style={{ color: "#94a3b8", fontSize: "16px" }}>No projects yet.</p>
+            <p style={{ color: "#64748b", fontSize: "13px" }}>Create a new project or wait for an invitation.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: "16px" }}>
+          <div style={{ display: "grid", gap: "12px" }}>
             {projects.map(({ role, project }) => (
               <div
                 key={project.id}
                 onClick={() => onSelectProject(project, role)}
-                style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px", cursor: "pointer", position: "relative" }}
+                style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: isMobile ? "16px" : "24px", cursor: "pointer" }}
                 onMouseEnter={(e) => e.currentTarget.style.borderColor = "#3b82f6"}
                 onMouseLeave={(e) => e.currentTarget.style.borderColor = "#334155"}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ color: "#f1f5f9", margin: "0 0 8px", fontSize: "18px" }}>{project.name}</h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ color: "#f1f5f9", margin: "0 0 6px", fontSize: isMobile ? "15px" : "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {project.name}
+                    </h3>
                     {project.description && (
-                      <p style={{ color: "#94a3b8", margin: "0 0 12px", fontSize: "14px" }}>{project.description}</p>
+                      <p style={{ color: "#94a3b8", margin: "0 0 8px", fontSize: "13px" }}>{project.description}</p>
                     )}
-                    <p style={{ color: "#64748b", margin: 0, fontSize: "12px" }}>
+                    <p style={{ color: "#64748b", margin: 0, fontSize: "11px" }}>
                       Created {new Date(project.created_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "600", background: roleColors[role]?.bg, color: roleColors[role]?.color }}>
-                      {roleColors[role]?.label}
+                  <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-end" : "center", gap: "8px", flexShrink: 0 }}>
+                    <span style={{ padding: "4px 10px", borderRadius: "20px", fontSize: "11px", fontWeight: "600", background: roleColors[role]?.bg, color: roleColors[role]?.color, whiteSpace: "nowrap" }}>
+                      {isMobile
+                        ? role === "project_manager" ? "PM" : role.charAt(0).toUpperCase() + role.slice(1)
+                        : roleColors[role]?.label}
                     </span>
                     {role === "project_manager" && (
-                      <>
+                      <div style={{ display: "flex", gap: "6px" }}>
                         <button
                           onClick={(e) => { e.stopPropagation(); setSetupProject({ project, role }); }}
-                          style={{ padding: "6px 12px", background: "#1e3a5f", color: "#60a5fa", border: "1px solid #3b82f6", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+                          style={{ padding: "5px 10px", background: "#1e3a5f", color: "#60a5fa", border: "1px solid #3b82f6", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}>
                           ⚙ Setup
                         </button>
                         <button
                           onClick={(e) => handleDelete(e, project.id)}
                           disabled={deletingId === project.id}
-                          style={{ padding: "6px 12px", background: "transparent", color: "#ef4444", border: "1px solid #ef4444", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
-                          {deletingId === project.id ? "Deleting..." : "Delete"}
+                          style={{ padding: "5px 10px", background: "transparent", color: "#ef4444", border: "1px solid #ef4444", borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}>
+                          {deletingId === project.id ? "..." : "✕"}
                         </button>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
