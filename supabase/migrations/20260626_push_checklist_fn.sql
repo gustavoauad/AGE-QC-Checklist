@@ -24,10 +24,10 @@ BEGIN
     LOOP
       new_item_id := target_cat || '_' || (item->>'item_id');
       INSERT INTO checklists
-        (project_id, item_id, category, item_text, sort_order, status, is_custom)
+        (project_id, item_id, category, item_text, status, is_custom)
       VALUES
         (p_project_id, new_item_id, target_cat,
-         item->>'item_text', (item->>'sort_order')::int, 'pending', true)
+         item->>'item_text', 'pending', true)
       ON CONFLICT DO NOTHING;
     END LOOP;
 
@@ -63,11 +63,10 @@ BEGIN
          AND item_id    = (item->>'item_id');
 
       INSERT INTO checklists
-        (project_id, item_id, category, item_text, sort_order, status, completed_by, completed_at)
+        (project_id, item_id, category, item_text, status, completed_by, completed_at)
       VALUES
         (p_project_id, item->>'item_id', target_cat,
-         item->>'item_text', (item->>'sort_order')::int,
-         saved_status, saved_by, saved_at);
+         item->>'item_text', saved_status, saved_by, saved_at);
     END LOOP;
 
     -- Remove old items for this category that are no longer in the org list

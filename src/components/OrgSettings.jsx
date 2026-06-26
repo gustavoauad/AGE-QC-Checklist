@@ -282,7 +282,7 @@ function ChecklistsTab({ org, orgRole }) {
       p_project_id:    pushProjectId,
       p_category:      catId,
       p_label:         catLabel,
-      p_items:         catItems.map((i) => ({ item_id: i.item_id, item_text: i.item_text, sort_order: i.sort_order })),
+      p_items:         catItems.map((i) => ({ item_id: i.item_id, item_text: i.item_text })),
       p_action:        action,
       p_new_cat_id:    action === "new" ? newCatId : null,
       p_new_cat_label: action === "new" ? newCatLabel : null,
