@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { CHECKLIST_TEMPLATE } from "../checklistTemplate";
+import { CHECKLIST_TEMPLATE, CATEGORIES } from "../checklistTemplate";
 
 const inputStyle = {
   width: "100%", padding: "10px 12px", background: "#0f172a",
@@ -8,6 +8,10 @@ const inputStyle = {
   fontSize: "14px", boxSizing: "border-box",
 };
 const labelStyle = { display: "block", color: "#94a3b8", fontSize: "13px", marginBottom: "6px" };
+
+// Static lookup built once at module load time
+const TMPL_META = {};
+CHECKLIST_TEMPLATE.forEach((t) => { TMPL_META[t.item_id] = { sub_section: t.sub_section, phase: t.phase }; });
 
 export default function CreateProjectModal({ onClose, onCreated, userId, org }) {
   const [name, setName] = useState("");
@@ -17,107 +21,151 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
   const [pmProjects, setPmProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [progress, setProgress] = useState("");
+  const [progressStep, setProgressStep] = useState("");
+  const [progressPct, setProgressPct] = useState(0);
+
+  // Org data pre-fetched on mount so create is instant
+  const [orgData, setOrgData] = useState(null);
+  const orgFetched = useRef(false);
 
   useEffect(() => {
-    supabase
-      .from("projects")
-      .select("id, name")
-      .eq("organization_id", org?.id)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setPmProjects(data || []));
-  }, [userId, org?.id]);
+    // Fetch projects for template picker
+    if (org?.id) {
+      supabase.from("projects").select("id, name")
+        .eq("organization_id", org.id).is("archived_at", null)
+        .order("created_at", { ascending: false })
+        .then(({ data }) => setPmProjects(data || []));
+    }
 
+    // Pre-fetch org config + items while user fills out the form
+    if (!org?.id || orgFetched.current) return;
+    orgFetched.current = true;
+    Promise.all([
+      supabase.from("org_checklist_config").select("*").eq("organization_id", org.id),
+      supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).eq("enabled", true).order("sort_order"),
+      supabase.from("org_checklist_items").select("category").eq("organization_id", org.id),
+    ]).then(([{ data: cfg }, { data: items }, { data: init }]) => {
+      const byCategory = {};
+      (items || []).forEach((item) => {
+        if (!byCategory[item.category]) byCategory[item.category] = [];
+        byCategory[item.category].push(item);
+      });
+      setOrgData({
+        cfg: cfg || [],
+        byCategory,
+        initializedCats: new Set((init || []).map((i) => i.category)),
+      });
+    });
+  }, [org?.id]);
+
+  // Build all checklist items in JS — zero DB calls
+  const buildChecklistItems = (projectId) => {
+    if (!org?.id || !orgData) {
+      return CHECKLIST_TEMPLATE.map((item, idx) => ({
+        project_id: projectId, item_id: item.item_id, category: item.category,
+        sub_section: item.sub_section || null, phase: item.phase || null,
+        item_text: item.text, status: "pending", sort_order: idx,
+      }));
+    }
+
+    const { byCategory, initializedCats, cfg } = orgData;
+    const customCatIds = cfg.filter((c) => c.is_custom).map((c) => c.category);
+    const allCatIds = [...CATEGORIES.map((c) => c.id), ...customCatIds];
+
+    const rows = [];
+    let idx = 0;
+    for (const catId of allCatIds) {
+      const catItems = byCategory[catId];
+      if (catItems?.length > 0) {
+        catItems.forEach((item) => {
+          rows.push({
+            project_id: projectId, item_id: item.item_id, category: catId,
+            sub_section: item.section || TMPL_META[item.item_id]?.sub_section || null,
+            phase: TMPL_META[item.item_id]?.phase || null,
+            item_text: item.item_text, status: "pending", sort_order: idx++,
+          });
+        });
+      } else if (!initializedCats.has(catId)) {
+        // Never configured in org settings → use original template
+        CHECKLIST_TEMPLATE.filter((t) => t.category === catId).forEach((item) => {
+          rows.push({
+            project_id: projectId, item_id: item.item_id, category: catId,
+            sub_section: item.sub_section || null, phase: item.phase || null,
+            item_text: item.text, status: "pending", sort_order: idx++,
+          });
+        });
+      }
+      // Initialized but emptied → intentionally empty
+    }
+    return rows;
+  };
+
+  // Template copy (used when "use existing project as template" is checked)
   const applyTemplate = async (newProjectId, templateId) => {
-    setProgress("Copying checklist configuration...");
-    const { data: cfgs } = await supabase
-      .from("project_checklist_config")
-      .select("*")
-      .eq("project_id", templateId);
+    setProgressStep("Copying template configuration…");
+    const [{ data: cfgs }, { data: customItems }, { data: milestones }] = await Promise.all([
+      supabase.from("project_checklist_config").select("*").eq("project_id", templateId),
+      supabase.from("checklists").select("*").eq("project_id", templateId).eq("is_custom", true),
+      supabase.from("project_milestones").select("*").eq("project_id", templateId).order("date"),
+    ]);
+
+    const insertPromises = [];
+
     if (cfgs?.length) {
-      await supabase.from("project_checklist_config").insert(
-        cfgs.map((c) => ({ project_id: newProjectId, category: c.category, enabled: c.enabled, label: c.label || null }))
+      insertPromises.push(
+        supabase.from("project_checklist_config").insert(
+          cfgs.map((c) => ({ project_id: newProjectId, category: c.category, enabled: c.enabled, label: c.label || null }))
+        )
       );
     }
-
-    setProgress("Copying custom checklist items...");
-    const { data: customItems } = await supabase
-      .from("checklists")
-      .select("*")
-      .eq("project_id", templateId)
-      .eq("is_custom", true);
     if (customItems?.length) {
-      for (let i = 0; i < customItems.length; i += 50) {
-        await supabase.from("checklists").insert(
-          customItems.slice(i, i + 50).map((item) => ({
+      insertPromises.push(
+        supabase.from("checklists").insert(
+          customItems.map((item) => ({
             project_id: newProjectId,
             item_id: `tmpl_${Date.now().toString(36)}_${item.item_id}`,
-            category: item.category,
-            sub_section: item.sub_section || null,
-            phase: item.phase || null,
-            item_text: item.item_text,
-            status: "pending",
-            is_custom: true,
+            category: item.category, sub_section: item.sub_section || null,
+            phase: item.phase || null, item_text: item.item_text,
+            status: "pending", is_custom: true,
           }))
-        );
-      }
+        )
+      );
     }
-
-    setProgress("Copying milestones...");
-    const { data: milestones } = await supabase
-      .from("project_milestones")
-      .select("*")
-      .eq("project_id", templateId)
-      .order("date");
+    await Promise.all(insertPromises);
 
     if (milestones?.length) {
+      setProgressStep("Copying milestones…");
       const { data: newMilestones } = await supabase
         .from("project_milestones")
         .insert(milestones.map((m) => ({
-          project_id: newProjectId,
-          name: m.name,
-          date: m.date,
+          project_id: newProjectId, name: m.name, date: m.date,
           days_before_alert: m.days_before_alert,
         })))
         .select();
 
-      // Copy milestone item assignments (standard items only, matched by item_id)
       if (newMilestones?.length) {
-        setProgress("Copying milestone assignments...");
         const nameToNewId = {};
         newMilestones.forEach((m) => { nameToNewId[m.name] = m.id; });
 
-        for (const oldMs of milestones) {
+        await Promise.all(milestones.map(async (oldMs) => {
           const newMsId = nameToNewId[oldMs.name];
-          if (!newMsId) continue;
-
+          if (!newMsId) return;
           const { data: msItems } = await supabase
-            .from("milestone_items")
-            .select("checklist_item_id")
-            .eq("milestone_id", oldMs.id);
-          if (!msItems?.length) continue;
-
+            .from("milestone_items").select("checklist_item_id").eq("milestone_id", oldMs.id);
+          if (!msItems?.length) return;
           const { data: oldItems } = await supabase
-            .from("checklists")
-            .select("id, item_id")
+            .from("checklists").select("id, item_id")
             .in("id", msItems.map((r) => r.checklist_item_id));
-
           const itemIds = (oldItems || []).map((i) => i.item_id);
-          if (!itemIds.length) continue;
-
+          if (!itemIds.length) return;
           const { data: newItems } = await supabase
-            .from("checklists")
-            .select("id")
-            .eq("project_id", newProjectId)
-            .in("item_id", itemIds);
-
+            .from("checklists").select("id").eq("project_id", newProjectId).in("item_id", itemIds);
           if (newItems?.length) {
             await supabase.from("milestone_items").insert(
               newItems.map((i) => ({ milestone_id: newMsId, checklist_item_id: i.id }))
             );
           }
-        }
+        }));
       }
     }
   };
@@ -126,130 +174,61 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
     e.preventDefault();
     setLoading(true);
     setError("");
+    setProgressPct(15);
+    setProgressStep("Creating project…");
 
-    setProgress("Creating project...");
+    // Step 1 – create the project record
     const { data: project, error: projError } = await supabase
       .from("projects")
       .insert({ name, description, created_by: userId, organization_id: org?.id || null })
-      .select()
-      .single();
-    if (projError) { setError(projError.message); setLoading(false); setProgress(""); return; }
+      .select().single();
+    if (projError) { setError(projError.message); setLoading(false); setProgressPct(0); return; }
 
-    setProgress("Setting up team...");
-    const { error: memberError } = await supabase.from("project_members").insert({
-      project_id: project.id, user_id: userId, role: "project_manager", invited_by: userId,
-    });
-    if (memberError) { setError(memberError.message); setLoading(false); setProgress(""); return; }
+    setProgressPct(40);
+    setProgressStep("Building checklist…");
 
-    // Template metadata lookup (sub_section / phase by item_id)
-    const tmplMeta = {};
-    CHECKLIST_TEMPLATE.forEach((t) => { tmplMeta[t.item_id] = { sub_section: t.sub_section, phase: t.phase }; });
+    // Step 2 – build items array entirely in JS (no network)
+    const checklistItems = buildChecklistItems(project.id);
 
-    let orgCfg = null;
-    let orgItemsByCategory = {};
-    let initializedCats = new Set(); // categories that have been configured in org settings
-
-    if (org?.id) {
-      setProgress("Loading organization settings...");
-      // Fetch config + enabled items + all items (to detect which categories were initialized)
-      const [{ data: cfgData }, { data: enabledItems }, { data: allItems }] = await Promise.all([
-        supabase.from("org_checklist_config").select("*").eq("organization_id", org.id),
-        supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).eq("enabled", true).order("sort_order"),
-        supabase.from("org_checklist_items").select("category").eq("organization_id", org.id),
-      ]);
-      orgCfg = cfgData || [];
-
-      // Map enabled items by category
-      (enabledItems || []).forEach((item) => {
-        if (!orgItemsByCategory[item.category]) orgItemsByCategory[item.category] = [];
-        orgItemsByCategory[item.category].push(item);
+    // Build config rows (org config already in memory from pre-fetch)
+    const cfgRows = [];
+    if (org?.id && orgData?.cfg?.length) {
+      orgData.cfg.forEach((c) => {
+        cfgRows.push({ project_id: project.id, category: c.category, enabled: c.enabled, label: c.label || null });
       });
-
-      // Which categories have any rows at all (were ever expanded/initialized in org settings)
-      initializedCats = new Set((allItems || []).map((i) => i.category));
-
-      // Copy org config to project config
-      if (orgCfg.length) {
-        await supabase.from("project_checklist_config").insert(
-          orgCfg.map((c) => ({ project_id: project.id, category: c.category, enabled: c.enabled, label: c.label || null }))
-        );
-      }
-      await supabase.from("project_checklist_config").upsert(
-        { project_id: project.id, category: "project_specific", enabled: true, label: null },
-        { onConflict: "project_id,category" }
-      );
+    }
+    if (!cfgRows.some((r) => r.category === "project_specific")) {
+      cfgRows.push({ project_id: project.id, category: "project_specific", enabled: true, label: null });
     }
 
-    setProgress("Populating default checklist items...");
+    setProgressPct(60);
+    setProgressStep("Saving to database…");
 
-    let checklistItems = [];
-    let sortIdx = 0;
+    // Step 3 – single parallel round-trip: member + config + ALL checklist items at once
+    const [memberRes, , itemsRes] = await Promise.all([
+      supabase.from("project_members").insert({
+        project_id: project.id, user_id: userId, role: "project_manager", invited_by: userId,
+      }),
+      cfgRows.length
+        ? supabase.from("project_checklist_config").insert(cfgRows)
+        : Promise.resolve({ error: null }),
+      checklistItems.length
+        ? supabase.from("checklists").insert(checklistItems)
+        : Promise.resolve({ error: null }),
+    ]);
 
-    if (org?.id) {
-      const customCatIds = (orgCfg || []).filter((c) => c.is_custom).map((c) => c.category);
-      const allCatIds = [...CATEGORIES.map((c) => c.id), ...customCatIds];
+    if (memberRes.error) { setError(memberRes.error.message); setLoading(false); setProgressPct(0); return; }
+    if (itemsRes.error)  { setError(itemsRes.error.message);  setLoading(false); setProgressPct(0); return; }
 
-      for (const catId of allCatIds) {
-        const catOrgItems = orgItemsByCategory[catId];
-
-        if (catOrgItems?.length > 0) {
-          // Category was configured in org settings — use its items (with any text/section overrides)
-          catOrgItems.forEach((item) => {
-            checklistItems.push({
-              project_id: project.id,
-              item_id: item.item_id,
-              category: catId,
-              sub_section: item.section || tmplMeta[item.item_id]?.sub_section || null,
-              phase: tmplMeta[item.item_id]?.phase || null,
-              item_text: item.item_text,
-              status: "pending",
-              sort_order: sortIdx++,
-            });
-          });
-        } else if (!initializedCats.has(catId)) {
-          // Category was never opened in org settings → use the original template items
-          CHECKLIST_TEMPLATE.filter((t) => t.category === catId).forEach((item) => {
-            checklistItems.push({
-              project_id: project.id,
-              item_id: item.item_id,
-              category: catId,
-              sub_section: item.sub_section || null,
-              phase: item.phase || null,
-              item_text: item.text,
-              status: "pending",
-              sort_order: sortIdx++,
-            });
-          });
-        }
-        // If initialized but all items deleted/disabled → the category is intentionally empty
-      }
-    } else {
-      // No org → full template
-      checklistItems = CHECKLIST_TEMPLATE.map((item, idx) => ({
-        project_id: project.id,
-        item_id: item.item_id,
-        category: item.category,
-        sub_section: item.sub_section || null,
-        phase: item.phase || null,
-        item_text: item.text,
-        status: "pending",
-        sort_order: idx,
-      }));
-    }
-
-    for (let i = 0; i < checklistItems.length; i += 50) {
-      const { error: checklistError } = await supabase.from("checklists").insert(checklistItems.slice(i, i + 50));
-      if (checklistError) { setError(checklistError.message); setLoading(false); setProgress(""); return; }
-      setProgress(`Populating checklist... ${Math.min(i + 50, checklistItems.length)}/${checklistItems.length}`);
-    }
+    setProgressPct(85);
 
     if (useTemplate && templateProjectId) {
       await applyTemplate(project.id, templateProjectId);
     }
 
-    setLoading(false);
-    setProgress("");
-    onCreated();
+    setProgressPct(100);
+    setProgressStep("Done!");
+    setTimeout(() => { setLoading(false); setProgressPct(0); onCreated(); }, 250);
   };
 
   return (
@@ -265,9 +244,23 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
             {error}
           </div>
         )}
-        {progress && (
-          <div style={{ background: "#011a3d", border: "1px solid #0095da", borderRadius: "8px", padding: "12px", marginBottom: "16px", color: "#33bdef", fontSize: "13px" }}>
-            ⏳ {progress}
+
+        {/* Progress bar — shown only while creating */}
+        {loading && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <span style={{ color: "#33bdef", fontSize: "13px", fontFamily: "Manrope, sans-serif" }}>{progressStep}</span>
+              <span style={{ color: "#64748b", fontSize: "12px", fontFamily: "Manrope, sans-serif" }}>{progressPct}%</span>
+            </div>
+            <div style={{ height: "6px", background: "#0f172a", borderRadius: "3px", overflow: "hidden", border: "1px solid #1e293b" }}>
+              <div style={{
+                height: "100%",
+                width: `${progressPct}%`,
+                background: progressPct === 100 ? "#4da447" : "#0095da",
+                borderRadius: "3px",
+                transition: "width 0.35s ease, background 0.2s",
+              }} />
+            </div>
           </div>
         )}
 
@@ -281,7 +274,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
           <div style={{ marginBottom: "20px" }}>
             <label style={labelStyle}>Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional project description..." rows={2}
+              placeholder="Optional project description…" rows={2}
               style={{ ...inputStyle, resize: "vertical" }} disabled={loading} />
           </div>
 
@@ -300,7 +293,6 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
                 No existing projects to use as template.
               </p>
             )}
-
             {useTemplate && pmProjects.length > 0 && (
               <div style={{ marginTop: "12px", marginLeft: "26px" }}>
                 <label style={labelStyle}>Select template project</label>
@@ -312,7 +304,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
                   ))}
                 </select>
                 <p style={{ color: "#64748b", fontSize: "11px", margin: "8px 0 0" }}>
-                  Copies: checklist configuration, custom items, milestones & their item assignments. Members are not copied.
+                  Copies checklist config, custom items, and milestones. Members are not copied.
                 </p>
               </div>
             )}
@@ -320,12 +312,17 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
 
           <div style={{ display: "flex", gap: "12px" }}>
             <button type="button" onClick={onClose} disabled={loading}
-              style={{ flex: 1, padding: "12px", background: "#334155", color: "#f1f5f9", border: "none", borderRadius: "8px", fontSize: "14px", cursor: loading ? "not-allowed" : "pointer" }}>
+              style={{ flex: 1, padding: "12px", background: "#334155", color: "#f1f5f9", border: "none", borderRadius: "8px", fontSize: "14px", cursor: loading ? "not-allowed" : "pointer", fontFamily: "Manrope, sans-serif" }}>
               Cancel
             </button>
             <button type="submit" disabled={loading || (useTemplate && !templateProjectId)}
-              style={{ flex: 1, padding: "12px", background: "#0095da", color: "white", border: "none", borderRadius: "8px", fontSize: "14px", fontWeight: "600", cursor: (loading || (useTemplate && !templateProjectId)) ? "not-allowed" : "pointer" }}>
-              {loading ? "Creating..." : "Create Project"}
+              style={{
+                flex: 1, padding: "12px", background: "#0095da", color: "white", border: "none",
+                borderRadius: "8px", fontSize: "14px", fontWeight: "600", fontFamily: "Manrope, sans-serif",
+                cursor: (loading || (useTemplate && !templateProjectId)) ? "not-allowed" : "pointer",
+                opacity: (loading || (useTemplate && !templateProjectId)) ? 0.7 : 1,
+              }}>
+              {loading ? "Creating…" : "Create Project"}
             </button>
           </div>
         </form>
