@@ -141,16 +141,39 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
     });
     if (memberError) { setError(memberError.message); setLoading(false); setProgress(""); return; }
 
-    // Copy org-level checklist config as project defaults (includes custom categories)
+    // Template metadata lookup (sub_section / phase by item_id)
+    const tmplMeta = {};
+    CHECKLIST_TEMPLATE.forEach((t) => { tmplMeta[t.item_id] = { sub_section: t.sub_section, phase: t.phase }; });
+
+    let orgCfg = null;
+    let orgItemsByCategory = {};
+    let initializedCats = new Set(); // categories that have been configured in org settings
+
     if (org?.id) {
-      const { data: orgCfg } = await supabase.from("org_checklist_config")
-        .select("*").eq("organization_id", org.id);
-      if (orgCfg?.length) {
+      setProgress("Loading organization settings...");
+      // Fetch config + enabled items + all items (to detect which categories were initialized)
+      const [{ data: cfgData }, { data: enabledItems }, { data: allItems }] = await Promise.all([
+        supabase.from("org_checklist_config").select("*").eq("organization_id", org.id),
+        supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).eq("enabled", true).order("sort_order"),
+        supabase.from("org_checklist_items").select("category").eq("organization_id", org.id),
+      ]);
+      orgCfg = cfgData || [];
+
+      // Map enabled items by category
+      (enabledItems || []).forEach((item) => {
+        if (!orgItemsByCategory[item.category]) orgItemsByCategory[item.category] = [];
+        orgItemsByCategory[item.category].push(item);
+      });
+
+      // Which categories have any rows at all (were ever expanded/initialized in org settings)
+      initializedCats = new Set((allItems || []).map((i) => i.category));
+
+      // Copy org config to project config
+      if (orgCfg.length) {
         await supabase.from("project_checklist_config").insert(
           orgCfg.map((c) => ({ project_id: project.id, category: c.category, enabled: c.enabled, label: c.label || null }))
         );
       }
-      // Always ensure project_specific exists and is enabled by default
       await supabase.from("project_checklist_config").upsert(
         { project_id: project.id, category: "project_specific", enabled: true, label: null },
         { onConflict: "project_id,category" }
@@ -159,26 +182,49 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
 
     setProgress("Populating default checklist items...");
 
-    // Use org-level item overrides if they exist, otherwise fall back to template
-    const { data: orgItems } = org?.id
-      ? await supabase.from("org_checklist_items").select("*").eq("organization_id", org.id).eq("enabled", true).order("sort_order")
-      : { data: null };
+    let checklistItems = [];
+    let sortIdx = 0;
 
-    let checklistItems;
-    if (orgItems && orgItems.length > 0) {
-      const tmplMeta = {};
-      CHECKLIST_TEMPLATE.forEach((t) => { tmplMeta[t.item_id] = { sub_section: t.sub_section, phase: t.phase }; });
-      checklistItems = orgItems.map((item, idx) => ({
-        project_id: project.id,
-        item_id: item.item_id,
-        category: item.category,
-        sub_section: item.section || tmplMeta[item.item_id]?.sub_section || null,
-        phase: tmplMeta[item.item_id]?.phase || null,
-        item_text: item.item_text,
-        status: "pending",
-        sort_order: idx,
-      }));
+    if (org?.id) {
+      const customCatIds = (orgCfg || []).filter((c) => c.is_custom).map((c) => c.category);
+      const allCatIds = [...CATEGORIES.map((c) => c.id), ...customCatIds];
+
+      for (const catId of allCatIds) {
+        const catOrgItems = orgItemsByCategory[catId];
+
+        if (catOrgItems?.length > 0) {
+          // Category was configured in org settings — use its items (with any text/section overrides)
+          catOrgItems.forEach((item) => {
+            checklistItems.push({
+              project_id: project.id,
+              item_id: item.item_id,
+              category: catId,
+              sub_section: item.section || tmplMeta[item.item_id]?.sub_section || null,
+              phase: tmplMeta[item.item_id]?.phase || null,
+              item_text: item.item_text,
+              status: "pending",
+              sort_order: sortIdx++,
+            });
+          });
+        } else if (!initializedCats.has(catId)) {
+          // Category was never opened in org settings → use the original template items
+          CHECKLIST_TEMPLATE.filter((t) => t.category === catId).forEach((item) => {
+            checklistItems.push({
+              project_id: project.id,
+              item_id: item.item_id,
+              category: catId,
+              sub_section: item.sub_section || null,
+              phase: item.phase || null,
+              item_text: item.text,
+              status: "pending",
+              sort_order: sortIdx++,
+            });
+          });
+        }
+        // If initialized but all items deleted/disabled → the category is intentionally empty
+      }
     } else {
+      // No org → full template
       checklistItems = CHECKLIST_TEMPLATE.map((item, idx) => ({
         project_id: project.id,
         item_id: item.item_id,
