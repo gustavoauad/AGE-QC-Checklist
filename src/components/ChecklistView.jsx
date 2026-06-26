@@ -274,90 +274,109 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     const completedByName = item.completed_by ? (profilesMap[item.completed_by]?.full_name || "Unknown") : null;
     const comments = commentsCache[item.id] || [];
     const isCommentsOpen = openComments === item.id;
+    const sc = statusColors[status];
+    const msList = itemMsMap[item.id] || [];
 
     return (
       <div key={item.id} style={{
-        borderBottom: idx < totalInGroup - 1 ? "1px solid #243044" : "none",
-        background: idx % 2 === 0 ? "#1e293b" : "#172032",
+        borderBottom: idx < totalInGroup - 1 ? "1px solid #1e293b" : "none",
+        background: "#0f172a",
       }}>
-        <div style={{ padding: isMobile ? "12px" : "14px 16px", display: "flex", alignItems: "flex-start", gap: isMobile ? "8px" : "16px" }}>
-          {/* Status buttons */}
-          <div style={{ display: "flex", gap: isMobile ? "4px" : "6px", flexShrink: 0, paddingTop: "2px" }}>
-            {["complete", "na", "pending"].map((s) => {
-              const sc = statusColors[s];
-              const isActive = status === s;
-              return (
-                <button key={s}
-                  onClick={() => editable && !isUpdating && handleStatusChange(item, s)}
-                  disabled={!editable || isUpdating}
-                  style={{
-                    padding: isMobile ? "5px 7px" : "4px 10px",
-                    border: `1px solid ${isActive ? sc.border : "#334155"}`,
-                    borderRadius: "6px", fontSize: isMobile ? "12px" : "11px", fontWeight: "600",
-                    background: isActive ? sc.bg : "transparent",
-                    color: isActive ? sc.color : "#64748b",
-                    cursor: editable && !isUpdating ? "pointer" : "not-allowed",
-                    minWidth: isMobile ? "32px" : undefined,
-                  }}>
-                  {sc.label}
-                </button>
-              );
-            })}
-          </div>
+        <div style={{ padding: isMobile ? "10px 12px" : "12px 16px" }}>
 
-          {/* Text */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Row 1: ID · current status badge · spacer · status buttons · comment */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
             {refCodes[item.id] && (
-              <span style={{ display: "inline-block", fontSize: "10px", fontWeight: "700", color: "#475569", fontFamily: "monospace", marginBottom: "2px", letterSpacing: "0.04em" }}>
+              <span style={{ fontSize: "10px", fontWeight: "700", color: "#334155", fontFamily: "monospace", letterSpacing: "0.05em", background: "#1e293b", border: "1px solid #243044", borderRadius: "4px", padding: "2px 6px", flexShrink: 0 }}>
                 {refCodes[item.id]}
               </span>
             )}
-            <p style={{
-              margin: 0, fontSize: isMobile ? "13px" : "14px", lineHeight: "1.5",
-              color: status === "na" ? "#64748b" : "#f1f5f9",
-              textDecoration: status === "na" ? "line-through" : "none",
+            {/* Current status as read badge */}
+            <span style={{ fontSize: "10px", fontWeight: "700", color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`, borderRadius: "20px", padding: "2px 10px", flexShrink: 0 }}>
+              {status === "complete" ? "Complete" : status === "na" ? "N/A" : "Pending"}
+            </span>
+            {item.is_custom && <span style={{ fontSize: "10px", color: "#a78bfa", background: "#2e1065", padding: "2px 7px", borderRadius: "20px" }}>custom</span>}
+            {item.edited_by_pm && <span style={{ fontSize: "10px", color: "#f59e0b", background: "#451a03", padding: "2px 7px", borderRadius: "20px" }}>✏ edited</span>}
+
+            {/* Push status buttons and comment to the right */}
+            <div style={{ flex: 1 }} />
+
+            {/* Status action buttons */}
+            {editable && (
+              <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                {["complete", "na", "pending"].map((s) => {
+                  const btn = statusColors[s];
+                  const isActive = status === s;
+                  return (
+                    <button key={s}
+                      onClick={() => !isUpdating && handleStatusChange(item, s)}
+                      disabled={isUpdating}
+                      title={s === "complete" ? "Mark Complete" : s === "na" ? "Mark N/A" : "Mark Pending"}
+                      style={{
+                        padding: isMobile ? "4px 8px" : "4px 12px",
+                        border: `1px solid ${isActive ? btn.border : "#334155"}`,
+                        borderRadius: "6px", fontSize: "11px", fontWeight: "600",
+                        background: isActive ? btn.bg : "transparent",
+                        color: isActive ? btn.color : "#475569",
+                        cursor: isUpdating ? "not-allowed" : "pointer",
+                        transition: "all 0.1s",
+                      }}>
+                      {s === "complete" ? "✓" : s === "na" ? "N/A" : "—"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {!editable && (
+              <span style={{ fontSize: "11px", color: "#475569", fontStyle: "italic", flexShrink: 0 }}>view only</span>
+            )}
+
+            {/* Comment button */}
+            <button onClick={() => toggleComments(item.id)} style={{
+              flexShrink: 0,
+              background: isCommentsOpen ? "#012d5a" : "transparent",
+              border: `1px solid ${isCommentsOpen ? "#0095da" : "#334155"}`,
+              color: isCommentsOpen ? "#33bdef" : "#64748b",
+              borderRadius: "6px", padding: "4px 10px",
+              fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
             }}>
-              {item.item_text}
-              {item.is_custom && (
-                <span style={{ marginLeft: "6px", fontSize: "10px", color: "#a78bfa", background: "#2e1065", padding: "1px 6px", borderRadius: "4px" }}>custom</span>
-              )}
-              {item.edited_by_pm && (
-                <span style={{ marginLeft: "6px", fontSize: "10px", color: "#f59e0b", background: "#451a03", padding: "1px 6px", borderRadius: "4px" }}>✏ edited</span>
-              )}
-            </p>
+              💬{comments.length > 0 ? ` ${comments.length}` : ""}
+            </button>
+          </div>
+
+          {/* Row 2: Item description */}
+          <p style={{
+            margin: "0 0 8px", fontSize: isMobile ? "13px" : "14px", lineHeight: "1.6",
+            color: status === "na" ? "#475569" : "#e2e8f0",
+            textDecoration: status === "na" ? "line-through" : "none",
+          }}>
+            {item.item_text}
+          </p>
+
+          {/* Row 3: Completed by + milestones */}
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
             {status === "complete" && completedByName && (
-              <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#7ecb7b" }}>
+              <span style={{ fontSize: "11px", color: "#7ecb7b", flexShrink: 0 }}>
                 ✓ {completedByName} · {formatDate(item.completed_at)}
-              </p>
+              </span>
             )}
             {milestones.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
-                {(itemMsMap[item.id] || []).length > 0
-                  ? (itemMsMap[item.id] || []).map((name) => (
-                      <span key={name} style={{ fontSize: "10px", background: "#012d5a", color: "#33bdef", border: "1px solid #0095da", borderRadius: "3px", padding: "1px 6px" }}>{name}</span>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
+                <span style={{ fontSize: "10px", color: "#475569", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>Milestones:</span>
+                {msList.length > 0
+                  ? msList.map((name) => (
+                      <span key={name} style={{ fontSize: "10px", background: "#012d5a", color: "#33bdef", border: "1px solid #0095da", borderRadius: "3px", padding: "2px 7px" }}>{name}</span>
                     ))
-                  : <span style={{ fontSize: "10px", color: "#ef4444", background: "#2d0a0a", border: "1px solid #7f1d1d", borderRadius: "3px", padding: "1px 6px" }}>⚠ no milestone</span>
+                  : <span style={{ fontSize: "10px", color: "#ef4444", background: "#2d0a0a", border: "1px solid #7f1d1d", borderRadius: "3px", padding: "2px 7px" }}>⚠ not assigned</span>
                 }
               </div>
             )}
           </div>
-
-          {/* Comment toggle */}
-          <button onClick={() => toggleComments(item.id)} style={{
-            flexShrink: 0,
-            background: isCommentsOpen ? "#012d5a" : "transparent",
-            border: `1px solid ${isCommentsOpen ? "#0095da" : "#334155"}`,
-            color: isCommentsOpen ? "#33bdef" : "#64748b",
-            borderRadius: "6px", padding: isMobile ? "5px 8px" : "4px 10px",
-            fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
-          }}>
-            💬{comments.length > 0 ? ` ${comments.length}` : ""}
-          </button>
         </div>
 
         {/* Comments panel */}
         {isCommentsOpen && (
-          <div style={{ borderTop: "1px solid #243044", padding: "12px 16px 14px", background: "#111827" }}>
+          <div style={{ borderTop: "1px solid #1e293b", padding: "12px 16px 14px", background: "#060d1a" }}>
             {comments.length === 0 ? (
               <p style={{ color: "#64748b", fontSize: "13px", margin: "0 0 10px" }}>No comments yet.</p>
             ) : (
@@ -371,14 +390,10 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <span style={{ fontSize: "11px", color: "#64748b" }}>{formatDate(c.created_at)}</span>
                         {c.user_id === session.user.id && (
-                          <button
-                            onClick={() => deleteComment(item.id, c.id)}
-                            title="Delete comment"
+                          <button onClick={() => deleteComment(item.id, c.id)}
                             style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: 0 }}
                             onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
-                            onMouseLeave={(e) => e.currentTarget.style.color = "#64748b"}>
-                            ×
-                          </button>
+                            onMouseLeave={(e) => e.currentTarget.style.color = "#64748b"}>×</button>
                         )}
                       </div>
                     </div>
@@ -404,18 +419,32 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     );
   };
 
-  const renderSection = (subSection, items) => (
-    <div key={subSection} style={{ marginBottom: "20px" }}>
-      {subSection !== "General" && (
-        <div style={{ background: "#1e293b", borderLeft: "3px solid #0095da", padding: "7px 14px", marginBottom: "8px", borderRadius: "0 6px 6px 0" }}>
-          <span style={{ color: "#33bdef", fontSize: "12px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.05em" }}>{subSection}</span>
+  const renderSection = (subSection, items) => {
+    // Derive section ref: find the first item's code and take the section part (e.g. "ARCH-2")
+    const firstCode = items[0] ? refCodes[items[0].id] : null;
+    const sectionRef = firstCode ? firstCode.replace(/\.\d+$/, "") : null;
+    const isGeneral = subSection === "General";
+    return (
+      <div key={subSection} style={{ marginBottom: "16px" }}>
+        {!isGeneral && (
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#0c1a2e", borderLeft: "3px solid #0095da", padding: "8px 16px", marginBottom: "2px", borderRadius: "0 8px 0 0" }}>
+            {sectionRef && (
+              <span style={{ fontSize: "10px", fontWeight: "700", color: "#0095da", fontFamily: "monospace", letterSpacing: "0.05em", background: "#012d5a", border: "1px solid #0095da", borderRadius: "4px", padding: "2px 7px", flexShrink: 0 }}>
+                {sectionRef}
+              </span>
+            )}
+            <span style={{ flex: 1, textAlign: "center", color: "#f1f5f9", fontSize: isMobile ? "12px" : "13px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              {subSection}
+            </span>
+            <span style={{ fontSize: "10px", color: "#475569", flexShrink: 0 }}>{items.length} items</span>
+          </div>
+        )}
+        <div style={{ borderRadius: isGeneral ? "10px" : "0 0 10px 10px", border: "1px solid #1e293b", borderTop: isGeneral ? undefined : "none", overflow: "hidden", display: "grid", gap: "1px", background: "#1e293b" }}>
+          {items.map((item, idx) => renderItem(item, idx, items.length))}
         </div>
-      )}
-      <div style={{ background: "#1e293b", borderRadius: "12px", border: "1px solid #334155", overflow: "hidden" }}>
-        {items.map((item, idx) => renderItem(item, idx, items.length))}
       </div>
-    </div>
-  );
+    );
+  };
 
   // ── Mobile selector pills ──────────────────────────────────────────────────
   const MobilePills = () => {
