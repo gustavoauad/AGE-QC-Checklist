@@ -17,24 +17,38 @@ CREATE TABLE IF NOT EXISTS org_checklist_sections (
 
 ALTER TABLE org_checklist_sections ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "org_members_read_sections" ON org_checklist_sections
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM organization_members
-      WHERE organization_members.organization_id = org_checklist_sections.organization_id
-        AND organization_members.user_id = auth.uid()
-    )
-  );
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'org_checklist_sections' AND policyname = 'org_members_read_sections'
+  ) THEN
+    CREATE POLICY "org_members_read_sections" ON org_checklist_sections
+      FOR SELECT USING (
+        EXISTS (
+          SELECT 1 FROM organization_members
+          WHERE organization_members.organization_id = org_checklist_sections.organization_id
+            AND organization_members.user_id = auth.uid()
+        )
+      );
+  END IF;
+END $$;
 
-CREATE POLICY "org_admins_manage_sections" ON org_checklist_sections
-  FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM organization_members
-      WHERE organization_members.organization_id = org_checklist_sections.organization_id
-        AND organization_members.user_id = auth.uid()
-        AND organization_members.role = 'admin'
-    )
-  );
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'org_checklist_sections' AND policyname = 'org_admins_manage_sections'
+  ) THEN
+    CREATE POLICY "org_admins_manage_sections" ON org_checklist_sections
+      FOR ALL USING (
+        EXISTS (
+          SELECT 1 FROM organization_members
+          WHERE organization_members.organization_id = org_checklist_sections.organization_id
+            AND organization_members.user_id = auth.uid()
+            AND organization_members.role = 'admin'
+        )
+      );
+  END IF;
+END $$;
 
 -- 4. Replace push function — now carries sub_section and sort_order
 CREATE OR REPLACE FUNCTION push_checklist_to_projects(
