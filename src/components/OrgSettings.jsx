@@ -647,6 +647,19 @@ function ChecklistsTab({ org, orgRole }) {
     ));
   };
 
+  const moveItemByStep = async (catId, itemId, direction) => {
+    const arr = [...(items[catId] || [])];
+    const idx = arr.findIndex((i) => i.id === itemId);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= arr.length) return;
+    [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+    const reordered = arr.map((item, i) => ({ ...item, sort_order: i }));
+    setItems((p) => ({ ...p, [catId]: reordered }));
+    await Promise.all(reordered.map((item) =>
+      supabase.from("org_checklist_items").update({ sort_order: item.sort_order }).eq("id", item.id)
+    ));
+  };
+
   const handleDragEnd = () => { dragInfo.current = null; setDragOver(null); };
 
   const getLabel = (cat) => config[cat.id]?.label || cat.label;
@@ -858,13 +871,13 @@ function ChecklistsTab({ org, orgRole }) {
 
                             {/* Items in this section */}
                             <div style={{ display: "grid", gap: "3px", marginLeft: "12px" }}>
-                              {sectionItems.map((item) => {
+                              {sectionItems.map((item, itemIdx) => {
                                 const isItemDragOver = dragOver === `item:${item.id}`;
                                 const isItemBeingDragged = dragInfo.current?.type === "item" && dragInfo.current?.itemId === item.id;
                                 return (
                                   <div
                                     key={item.id}
-                                    draggable={orgRole === "admin" && editingItemId !== item.id}
+                                    draggable={orgRole === "admin" && !isMobile && editingItemId !== item.id}
                                     onDragStart={(e) => handleItemDragStart(e, cat.id, item.id)}
                                     onDragOver={(e) => handleItemDragOver(e, cat.id, item.id)}
                                     onDrop={(e) => handleItemDrop(e, cat.id, item.id, item.section)}
@@ -878,8 +891,16 @@ function ChecklistsTab({ org, orgRole }) {
                                       transition: "background 0.1s",
                                     }}
                                   >
-                                    {orgRole === "admin" && (
+                                    {orgRole === "admin" && !isMobile && (
                                       <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</span>
+                                    )}
+                                    {orgRole === "admin" && isMobile && (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
+                                        <button onClick={() => moveItemByStep(cat.id, item.id, -1)} disabled={itemIdx === 0}
+                                          style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▲</button>
+                                        <button onClick={() => moveItemByStep(cat.id, item.id, 1)} disabled={itemIdx === sectionItems.length - 1}
+                                          style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▼</button>
+                                      </div>
                                     )}
                                     {editingItemId === item.id ? (
                                       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -1023,13 +1044,13 @@ function ChecklistsTab({ org, orgRole }) {
                                   </div>
                                 )}
                                 <div style={{ display: "grid", gap: "3px" }}>
-                                  {noSection.map((item) => {
+                                  {noSection.map((item, itemIdx) => {
                                     const isItemDragOver = dragOver === `item:${item.id}`;
                                     const isItemBeingDragged = dragInfo.current?.type === "item" && dragInfo.current?.itemId === item.id;
                                     return (
                                       <div
                                         key={item.id}
-                                        draggable={orgRole === "admin" && editingItemId !== item.id}
+                                        draggable={orgRole === "admin" && !isMobile && editingItemId !== item.id}
                                         onDragStart={(e) => handleItemDragStart(e, cat.id, item.id)}
                                         onDragOver={(e) => handleItemDragOver(e, cat.id, item.id)}
                                         onDrop={(e) => handleItemDrop(e, cat.id, item.id, null)}
@@ -1043,8 +1064,16 @@ function ChecklistsTab({ org, orgRole }) {
                                           transition: "background 0.1s",
                                         }}
                                       >
-                                        {orgRole === "admin" && (
+                                        {orgRole === "admin" && !isMobile && (
                                           <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</span>
+                                        )}
+                                        {orgRole === "admin" && isMobile && (
+                                          <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
+                                            <button onClick={() => moveItemByStep(cat.id, item.id, -1)} disabled={itemIdx === 0}
+                                              style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▲</button>
+                                            <button onClick={() => moveItemByStep(cat.id, item.id, 1)} disabled={itemIdx === noSection.length - 1}
+                                              style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▼</button>
+                                          </div>
                                         )}
                                         {editingItemId === item.id ? (
                                           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>

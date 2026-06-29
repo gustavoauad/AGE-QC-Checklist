@@ -459,6 +459,19 @@ function ChecklistsTab({ project, userRole }) {
     ));
   };
 
+  const moveItemByStep = async (catId, itemId, direction) => {
+    const arr = [...(items[catId] || [])];
+    const idx = arr.findIndex((i) => i.id === itemId);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= arr.length) return;
+    [arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]];
+    const reordered = arr.map((item, i) => ({ ...item, sort_order: i }));
+    setItems((p) => ({ ...p, [catId]: reordered }));
+    await Promise.all(reordered.map((item) =>
+      supabase.from("checklists").update({ sort_order: item.sort_order }).eq("id", item.id)
+    ));
+  };
+
   if (loading) return <p style={{ color: "var(--c-text-2)" }}>Loading...</p>;
 
   return (
@@ -676,18 +689,26 @@ function ChecklistsTab({ project, userRole }) {
                           )}
                         </div>
                         <div style={{ display: "grid", gap: "3px", marginLeft: "12px" }}>
-                          {sectionItems.map((item) => {
+                          {sectionItems.map((item, itemIdx) => {
                             const isDO = dragOver === `item:${item.id}`;
                             const isBDi = dragInfo.current?.type === "item" && dragInfo.current?.itemId === item.id;
                             return (
-                              <div key={item.id} draggable={canEdit && editingItemId !== item.id}
+                              <div key={item.id} draggable={canEdit && !isMobile && editingItemId !== item.id}
                                 onDragStart={(e) => handleItemDragStart(e, cat.id, item.id)}
                                 onDragOver={(e) => handleItemDragOver(e, cat.id, item.id)}
                                 onDrop={(e) => handleItemDrop(e, cat.id, item.id, item.sub_section)}
                                 onDragEnd={handleDragEnd}
                                 style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", borderRadius: "0 6px 6px 0", borderLeft: `2px solid ${isDO ? "var(--c-accent)" : "var(--c-accent-2)"}`, background: isDO ? "var(--c-accent-dk)" : "var(--c-surface-item)", opacity: isBDi ? 0.3 : 1, transition: "background 0.1s" }}
                               >
-                                {canEdit && <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>:</span>}
+                                {canEdit && !isMobile && <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</span>}
+                                {canEdit && isMobile && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
+                                    <button onClick={() => moveItemByStep(cat.id, item.id, -1)} disabled={itemIdx === 0}
+                                      style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▲</button>
+                                    <button onClick={() => moveItemByStep(cat.id, item.id, 1)} disabled={itemIdx === sectionItems.length - 1}
+                                      style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▼</button>
+                                  </div>
+                                )}
                                 {editingItemId === item.id ? (
                                   <input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item); if (e.key === "Escape") setEditingItemId(null); }}
@@ -834,18 +855,26 @@ function ChecklistsTab({ project, userRole }) {
                               </div>
                             )}
                             <div style={{ display: "grid", gap: "3px" }}>
-                              {noSection.map((item) => {
+                              {noSection.map((item, itemIdx) => {
                                 const isDO = dragOver === `item:${item.id}`;
                                 const isBDi = dragInfo.current?.type === "item" && dragInfo.current?.itemId === item.id;
                                 return (
-                                  <div key={item.id} draggable={canEdit && editingItemId !== item.id}
+                                  <div key={item.id} draggable={canEdit && !isMobile && editingItemId !== item.id}
                                     onDragStart={(e) => handleItemDragStart(e, cat.id, item.id)}
                                     onDragOver={(e) => handleItemDragOver(e, cat.id, item.id)}
                                     onDrop={(e) => handleItemDrop(e, cat.id, item.id, null)}
                                     onDragEnd={handleDragEnd}
                                     style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", borderRadius: "6px", borderLeft: `2px dashed ${isDO ? "var(--c-accent)" : "var(--c-border)"}`, background: isDO ? "var(--c-accent-dk)" : "var(--c-surface)", opacity: isBDi ? 0.3 : 1, transition: "background 0.1s" }}
                                   >
-                                    {canEdit && <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>:</span>}
+                                    {canEdit && !isMobile && <span style={{ color: "var(--c-text-4)", fontSize: "13px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</span>}
+                                    {canEdit && isMobile && (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "1px", flexShrink: 0 }}>
+                                        <button onClick={() => moveItemByStep(cat.id, item.id, -1)} disabled={itemIdx === 0}
+                                          style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▲</button>
+                                        <button onClick={() => moveItemByStep(cat.id, item.id, 1)} disabled={itemIdx === noSection.length - 1}
+                                          style={{ padding: "1px 5px", fontSize: "10px", background: "none", border: "1px solid var(--c-border)", borderRadius: "3px", color: "var(--c-text-3)", cursor: "pointer", lineHeight: 1 }}>▼</button>
+                                      </div>
+                                    )}
                                     {editingItemId === item.id ? (
                                       <input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)}
                                         onKeyDown={(e) => { if (e.key === "Enter") saveItemEdit(item); if (e.key === "Escape") setEditingItemId(null); }}

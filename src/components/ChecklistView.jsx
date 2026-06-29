@@ -1149,14 +1149,14 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               .sort((a, b) => a.dateObj - b.dateObj);
             const nextMs = upcomingMs.find((m) => m.dateObj >= today) || null;
 
-            // Status donut chart helpers
+            // Status donut chart helpers — N/A excluded; percentages over applicable items only
             const CIRC = 2 * Math.PI * 54;
             const inProgressCount = inProgressItems.length;
+            const donutBase = applicableItems; // total - na
             const donutSegments = [
-              { pct: totalItems ? completedItems / totalItems : 0, color: "#22c55e", label: "Complete" },
-              { pct: totalItems ? inProgressCount / totalItems : 0, color: "#a855f7", label: "In Progress" },
-              { pct: totalItems ? naItems / totalItems : 0, color: "#475569", label: "N/A" },
-              { pct: totalItems ? pendingItems / totalItems : 0, color: "#334155", label: "Pending" },
+              { pct: donutBase ? completedItems / donutBase : 0, color: "#22c55e", label: "Complete", count: completedItems },
+              { pct: donutBase ? inProgressCount / donutBase : 0, color: "#a855f7", label: "In Progress", count: inProgressCount },
+              { pct: donutBase ? pendingItems / donutBase : 0, color: "#334155", label: "Pending", count: pendingItems },
             ];
 
             // Helper: render one QAQC thread card
@@ -1321,21 +1321,23 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                           });
                         })()}
                         <text x="80" y="76" textAnchor="middle" fontSize="22" fontWeight="800" fill="var(--c-text)">{overallProgress}%</text>
-                        <text x="80" y="94" textAnchor="middle" fontSize="10" fill="var(--c-text-4)">complete</text>
+                        <text x="80" y="94" textAnchor="middle" fontSize="10" fill="var(--c-text-4)">{completedItems}/{applicableItems}</text>
                       </svg>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {[
-                          { label: "Complete",    count: completedItems,   color: "#22c55e" },
-                          { label: "In Progress", count: inProgressCount,  color: "#a855f7" },
-                          { label: "Pending",     count: pendingItems,     color: "var(--c-text-4)" },
-                          { label: "N/A",         count: naItems,          color: "#475569" },
-                        ].map(({ label, count, color }) => (
+                        {donutSegments.map(({ label, count, color }) => (
                           <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: color, flexShrink: 0 }} />
                             <span style={{ fontSize: "12px", color: "var(--c-text-3)", minWidth: "70px" }}>{label}</span>
                             <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--c-text)" }}>{count}</span>
                           </div>
                         ))}
+                        {naItems > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", opacity: 0.6 }}>
+                            <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: "#475569", flexShrink: 0 }} />
+                            <span style={{ fontSize: "12px", color: "var(--c-text-3)", minWidth: "70px" }}>N/A</span>
+                            <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--c-text)" }}>{naItems}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
