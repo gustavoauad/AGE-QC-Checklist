@@ -27,8 +27,10 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const [filterApplicable, setFilterApplicable] = useState(false);
   const [helpPopover, setHelpPopover] = useState(null); // item.id
   const [itemMsIdMap, setItemMsIdMap] = useState({}); // itemId → [milestoneId, ...]
-  const [qaqcAlerts, setQaqcAlerts] = useState([]); // flagged comments
+  const [qaqcThreads, setQaqcThreads] = useState([]);         // open: items with unresolved QA/QC flags
+  const [resolvedQaqcThreads, setResolvedQaqcThreads] = useState([]); // items where all QA/QC flags resolved
   const [qaqcAlertsLoaded, setQaqcAlertsLoaded] = useState(false);
+  const [resolvedExpanded, setResolvedExpanded] = useState(false);
   const [dashReplyText, setDashReplyText] = useState({}); // { [itemId]: string }
   const [dashReplying, setDashReplying] = useState(null); // itemId
 
@@ -324,20 +326,57 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     if (qaqcAlertsLoaded) return;
     const itemIds = checklists.map((c) => c.id);
     if (!itemIds.length) { setQaqcAlertsLoaded(true); return; }
-    const { data } = await supabase
+
+    // Find all items that have at least one qaqc-flagged comment
+    const { data: flagged } = await supabase
       .from("checklist_comments")
-      .select("*, checklist:checklists(id, item_text, category)")
+      .select("checklist_item_id")
       .eq("is_qaqc_flagged", true)
-      .in("checklist_item_id", itemIds)
-      .order("created_at", { ascending: false });
-    const alerts = (data || []).map((c) => ({
-      ...c,
-      authorName: profilesMap[c.user_id]?.full_name || "QAQC",
-      itemText: c.checklist?.item_text || "",
-      itemCategory: c.checklist?.category || null,
-    }));
-    setQaqcAlerts(alerts);
+      .in("checklist_item_id", itemIds);
+    const alertItemIds = [...new Set((flagged || []).map((c) => c.checklist_item_id))];
+    if (!alertItemIds.length) {
+      setQaqcThreads([]); setResolvedQaqcThreads([]); setQaqcAlertsLoaded(true); return;
+    }
+
+    // Fetch full comment threads for those items
+    const { data: allComments } = await supabase
+      .from("checklist_comments")
+      .select("*")
+      .in("checklist_item_id", alertItemIds)
+      .order("created_at");
+
+    const itemsById = Object.fromEntries(checklists.map((c) => [c.id, c]));
+    const threadsMap = {};
+    alertItemIds.forEach((id) => {
+      const item = itemsById[id];
+      threadsMap[id] = { itemId: id, itemText: item?.item_text || "", itemCategory: item?.category || null, comments: [] };
+    });
+    (allComments || []).forEach((c) => {
+      if (threadsMap[c.checklist_item_id]) {
+        threadsMap[c.checklist_item_id].comments.push({ ...c, authorName: profilesMap[c.user_id]?.full_name || "Unknown" });
+      }
+    });
+
+    const open = [], resolved = [];
+    Object.values(threadsMap).forEach((t) => {
+      const hasOpen = t.comments.some((c) => c.is_qaqc_flagged && !c.is_resolved);
+      if (hasOpen) open.push(t); else resolved.push(t);
+    });
+    open.sort((a, b) => {
+      const latest = (t) => Math.max(...t.comments.filter((c) => c.is_qaqc_flagged && !c.is_resolved).map((c) => new Date(c.created_at).getTime()));
+      return latest(b) - latest(a);
+    });
+    setQaqcThreads(open);
+    setResolvedQaqcThreads(resolved);
     setQaqcAlertsLoaded(true);
+  };
+
+  const resolveAlert = async (commentId) => {
+    const { error } = await supabase
+      .from("checklist_comments")
+      .update({ is_resolved: true, resolved_at: new Date().toISOString(), resolved_by: session.user.id })
+      .eq("id", commentId);
+    if (!error) { setQaqcAlertsLoaded(false); await loadQaqcAlerts(); }
   };
 
   const submitDashReply = async (itemId) => {
@@ -356,6 +395,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       });
       setDashReplyText((prev) => ({ ...prev, [itemId]: "" }));
       setQaqcAlertsLoaded(false);
+      setQaqcThreads([]); setResolvedQaqcThreads([]);
       await loadQaqcAlerts();
     }
     setDashReplying(null);
@@ -899,7 +939,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               const pastDueCount = withDue.filter((c) => c.dueDate < today).length;
               const dueSoonCount = withDue.filter((c) => { const d = Math.ceil((c.dueDate - today) / 86400000); return d >= 0 && d <= 7; }).length;
               const sections = [
-                { label: "QA/QC Alerts",  icon: "🚩", count: qaqcAlerts.length,  color: "var(--c-warn)" },
+                { label: "QA/QC Alerts",  icon: "🚩", count: qaqcThreads.length,  color: "var(--c-warn)" },
                 { label: "Past Due",       icon: "⚠",  count: pastDueCount,       color: "var(--c-err)" },
                 { label: "Due Soon",       icon: "⏰", count: dueSoonCount,       color: "var(--c-warn)" },
                 { label: "In Progress",    icon: "▶",  count: inProgCount,        color: "var(--c-purple)" },
@@ -1071,16 +1111,102 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               { pct: totalItems ? pendingItems / totalItems : 0, color: "#334155", label: "Pending" },
             ];
 
+            // Helper: render one QAQC thread card
+            const renderQaqcThread = (thread, isResolved) => (
+              <div key={thread.itemId} style={{
+                background: "var(--c-surface)", borderRadius: "10px", overflow: "hidden",
+                border: `1px solid ${isResolved ? "var(--c-border)" : "var(--c-warn)"}`,
+                borderLeft: `4px solid ${isResolved ? "var(--c-ok)" : "var(--c-warn)"}`,
+              }}>
+                {/* Thread header */}
+                <div style={{ background: "var(--c-surface-alt)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {isResolved && <span style={{ fontSize: "10px", fontWeight: "700", color: "var(--c-ok-text)", background: "var(--c-ok-bg)", border: "1px solid var(--c-ok)", borderRadius: "20px", padding: "1px 8px", marginRight: "8px" }}>✓ Resolved</span>}
+                    <span style={{ fontSize: "12px", color: "var(--c-text-2)", fontWeight: "500" }}>📋 {thread.itemText}</span>
+                  </div>
+                  {thread.itemCategory && (
+                    <button onClick={() => goToItem(thread.itemId, thread.itemCategory)}
+                      style={{ flexShrink: 0, fontSize: "11px", fontWeight: "600", color: "var(--c-accent-lt)", background: "var(--c-accent-dk)", border: "1px solid #0095da", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                      View in checklist →
+                    </button>
+                  )}
+                </div>
+                {/* Full comment thread */}
+                <div style={{ padding: "12px 14px", display: "grid", gap: "8px" }}>
+                  {thread.comments.map((c) => {
+                    const isFlag = c.is_qaqc_flagged;
+                    const isFlagResolved = isFlag && c.is_resolved;
+                    return (
+                      <div key={c.id} style={{
+                        background: isFlag ? (isFlagResolved ? "var(--c-surface-alt)" : "var(--c-warn-bg)") : "var(--c-surface-alt)",
+                        borderRadius: "8px", padding: "9px 12px",
+                        borderLeft: isFlag ? `3px solid ${isFlagResolved ? "var(--c-ok)" : "var(--c-warn)"}` : "3px solid var(--c-border)",
+                        opacity: isFlagResolved ? 0.75 : 1,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px", flexWrap: "wrap", gap: "6px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                            {isFlag && (
+                              <span style={{ fontSize: "10px", fontWeight: "700", color: isFlagResolved ? "var(--c-ok-text)" : "var(--c-warn)", background: isFlagResolved ? "var(--c-ok-bg)" : "var(--c-warn-bg)", border: `1px solid ${isFlagResolved ? "var(--c-ok)" : "var(--c-warn)"}`, borderRadius: "20px", padding: "1px 7px" }}>
+                                {isFlagResolved ? "✓ QA/QC" : "🚩 QA/QC"}
+                              </span>
+                            )}
+                            <span style={{ fontSize: "12px", color: "var(--c-text)", fontWeight: "600" }}>{c.authorName}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "11px", color: "var(--c-text-3)" }}>{formatDate(c.created_at)}</span>
+                            {isFlag && !isFlagResolved && (
+                              <button onClick={() => resolveAlert(c.id)}
+                                style={{ fontSize: "11px", fontWeight: "600", color: "var(--c-ok-text)", background: "var(--c-ok-bg)", border: "1px solid var(--c-ok)", borderRadius: "6px", padding: "2px 9px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                                ✓ Resolve
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p style={{ margin: 0, fontSize: "13px", color: "var(--c-text)", lineHeight: "1.55" }}>{c.comment}</p>
+                        {isFlagResolved && c.resolved_at && (
+                          <p style={{ margin: "5px 0 0", fontSize: "10px", color: "var(--c-text-4)" }}>
+                            Resolved {formatDate(c.resolved_at)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Reply input (open threads only) */}
+                {!isResolved && (
+                  <div style={{ padding: "0 14px 12px", display: "flex", gap: "6px" }}>
+                    <input
+                      value={dashReplyText[thread.itemId] || ""}
+                      onChange={(e) => setDashReplyText((prev) => ({ ...prev, [thread.itemId]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && submitDashReply(thread.itemId)}
+                      placeholder="Reply to this thread…"
+                      style={{ flex: 1, padding: "7px 11px", background: "var(--c-bg)", border: "1px solid var(--c-border)", borderRadius: "6px", color: "var(--c-text)", fontSize: "12px" }}
+                    />
+                    <button
+                      onClick={() => submitDashReply(thread.itemId)}
+                      disabled={dashReplying === thread.itemId || !(dashReplyText[thread.itemId] || "").trim()}
+                      style={{ padding: "7px 14px", background: "var(--c-accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
+                      {dashReplying === thread.itemId ? "…" : "Send"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+
             return (
               <>
-                <h2 style={{ color: "var(--c-text)", margin: "0 0 20px", fontSize: "18px" }}>Project Dashboard</h2>
+                {/* ── 1. Header ─────────────────────────────────────── */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "20px", gap: "12px", flexWrap: "wrap" }}>
+                  <h2 style={{ color: "var(--c-text)", margin: 0, fontSize: "18px" }}>Project Dashboard</h2>
+                  <span style={{ fontSize: "12px", color: "var(--c-text-3)" }}>{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+                </div>
 
-                {/* Current / Next Milestone Banner */}
+                {/* ── 2. Next Milestone Banner ───────────────────────── */}
                 {nextMs && (() => {
                   const dLeft = Math.ceil((nextMs.dateObj - today) / 86400000);
                   const { done, applicable, pct } = getMsProgress(nextMs.id);
                   return (
-                    <div style={{ background: "var(--c-accent-dk)", border: "1px solid var(--c-accent)", borderRadius: "12px", padding: "16px 20px", marginBottom: "24px" }}>
+                    <div style={{ background: "var(--c-accent-dk)", border: "1px solid var(--c-accent)", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: "10px", fontWeight: "700", color: "var(--c-accent-lt)", textTransform: "uppercase", letterSpacing: "0.07em", margin: "0 0 4px" }}>Next Milestone</p>
@@ -1107,61 +1233,8 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   );
                 })()}
 
-                {/* QA/QC flagged comments — top priority banner */}
-                {qaqcAlerts.length > 0 && (
-                  <div style={{ marginBottom: "24px", background: "var(--c-warn-bg)", border: "2px solid var(--c-warn)", borderRadius: "10px", padding: "14px 16px" }}>
-                    <h3 style={{ color: "var(--c-warn)", margin: "0 0 12px", fontSize: "14px", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
-                      🚩 QA/QC Comments Requiring Response
-                      <span style={{ background: "var(--c-warn)", color: "white", borderRadius: "20px", padding: "1px 9px", fontSize: "12px" }}>{qaqcAlerts.length}</span>
-                    </h3>
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      {qaqcAlerts.map((c) => (
-                        <div key={c.id} style={{ background: "var(--c-surface)", borderRadius: "8px", borderLeft: "3px solid var(--c-warn)", overflow: "hidden" }}>
-                          {/* Checklist item context */}
-                          <div style={{ background: "var(--c-surface-alt)", padding: "8px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
-                            <span style={{ fontSize: "12px", color: "var(--c-text-2)", flex: 1 }}>📋 {c.itemText}</span>
-                            {c.itemCategory && (
-                              <button onClick={() => goToItem(c.checklist_item_id, c.itemCategory)}
-                                style={{ flexShrink: 0, fontSize: "11px", fontWeight: "600", color: "var(--c-accent-lt)", background: "var(--c-accent-dk)", border: "1px solid #0095da", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
-                                Go to item →
-                              </button>
-                            )}
-                          </div>
-                          {/* Comment */}
-                          <div style={{ padding: "10px 14px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", flexWrap: "wrap", gap: "6px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-warn)", background: "var(--c-warn-bg)", border: "1px solid var(--c-warn)", borderRadius: "20px", padding: "1px 8px" }}>QA/QC</span>
-                                <span style={{ fontSize: "12px", color: "var(--c-text)", fontWeight: "600" }}>{c.authorName}</span>
-                              </div>
-                              <span style={{ fontSize: "11px", color: "var(--c-text-3)" }}>{formatDate(c.created_at)}</span>
-                            </div>
-                            <p style={{ margin: "0 0 10px", fontSize: "13px", color: "var(--c-text)", lineHeight: "1.5" }}>{c.comment}</p>
-                            {/* Inline reply */}
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <input
-                                value={dashReplyText[c.checklist_item_id] || ""}
-                                onChange={(e) => setDashReplyText((prev) => ({ ...prev, [c.checklist_item_id]: e.target.value }))}
-                                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && submitDashReply(c.checklist_item_id)}
-                                placeholder="Reply…"
-                                style={{ flex: 1, padding: "6px 10px", background: "var(--c-bg)", border: "1px solid var(--c-border)", borderRadius: "6px", color: "var(--c-text)", fontSize: "12px" }}
-                              />
-                              <button
-                                onClick={() => submitDashReply(c.checklist_item_id)}
-                                disabled={dashReplying === c.checklist_item_id || !(dashReplyText[c.checklist_item_id] || "").trim()}
-                                style={{ padding: "6px 12px", background: "var(--c-accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: "600", cursor: "pointer" }}>
-                                {dashReplying === c.checklist_item_id ? "…" : "Reply"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "10px", marginBottom: "28px" }}>
+                {/* ── 3. Stats + Charts ──────────────────────────────── */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: "8px", marginBottom: "16px" }}>
                   {statCard("Total", totalItems, "var(--c-text)")}
                   {statCard("Complete", completedItems, "var(--c-ok-text)")}
                   {statCard("In Progress", inProgressItems.length, "var(--c-purple)")}
@@ -1169,9 +1242,8 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   {statCard("N/A", naItems, "var(--c-text-4)")}
                   {statCard("Progress", `${overallProgress}%`, overallProgress === 100 ? "var(--c-ok-text)" : "var(--c-accent)")}
                 </div>
-                {/* Charts row */}
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto 1fr", gap: "16px", marginBottom: "28px", alignItems: "start" }}>
-                  {/* Status donut chart */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "auto 1fr", gap: "14px", marginBottom: "24px", alignItems: "start" }}>
+                  {/* Donut */}
                   <div style={{ background: "var(--c-surface)", border: "1px solid var(--c-border)", borderRadius: "12px", padding: "16px 20px" }}>
                     <p style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 14px" }}>Status Breakdown</p>
                     <div style={{ display: "flex", alignItems: "center", gap: "20px", flexWrap: "wrap" }}>
@@ -1199,10 +1271,10 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                       </svg>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         {[
-                          { label: "Complete",    count: completedItems,    color: "#22c55e" },
-                          { label: "In Progress", count: inProgressCount,   color: "#a855f7" },
-                          { label: "Pending",     count: pendingItems,      color: "var(--c-text-4)" },
-                          { label: "N/A",         count: naItems,           color: "#475569" },
+                          { label: "Complete",    count: completedItems,   color: "#22c55e" },
+                          { label: "In Progress", count: inProgressCount,  color: "#a855f7" },
+                          { label: "Pending",     count: pendingItems,     color: "var(--c-text-4)" },
+                          { label: "N/A",         count: naItems,          color: "#475569" },
                         ].map(({ label, count, color }) => (
                           <div key={label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: color, flexShrink: 0 }} />
@@ -1213,8 +1285,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                       </div>
                     </div>
                   </div>
-
-                  {/* Per-category progress bars */}
+                  {/* Category bars */}
                   <div style={{ background: "var(--c-surface)", border: "1px solid var(--c-border)", borderRadius: "12px", padding: "16px 20px" }}>
                     <p style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 14px" }}>Progress by Checklist</p>
                     <div style={{ display: "grid", gap: "10px" }}>
@@ -1237,9 +1308,9 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   </div>
                 </div>
 
-                {/* Milestone timeline */}
+                {/* ── 4. Milestone Timeline ──────────────────────────── */}
                 {milestones.length > 0 && (
-                  <div style={{ background: "var(--c-surface)", border: "1px solid var(--c-border)", borderRadius: "12px", padding: "16px 20px", marginBottom: "28px" }}>
+                  <div style={{ background: "var(--c-surface)", border: "1px solid var(--c-border)", borderRadius: "12px", padding: "16px 20px", marginBottom: "24px" }}>
                     <p style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 16px" }}>Milestone Timeline</p>
                     {upcomingMs.map((m, idx) => {
                       const dLeft = Math.ceil((m.dateObj - today) / 86400000);
@@ -1249,12 +1320,10 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                       const dotColor = isPast ? "#22c55e" : isNext ? "var(--c-accent)" : "var(--c-border)";
                       return (
                         <div key={m.id} style={{ display: "flex", gap: "14px" }}>
-                          {/* Timeline spine */}
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "14px", flexShrink: 0 }}>
                             <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: dotColor, border: `2px solid ${isNext ? "var(--c-accent)" : dotColor}`, boxShadow: isNext ? "0 0 0 3px var(--c-accent-dk)" : "none", marginTop: "3px", flexShrink: 0 }} />
                             {idx < upcomingMs.length - 1 && <div style={{ width: "2px", flex: 1, background: "var(--c-border)", margin: "4px 0" }} />}
                           </div>
-                          {/* Milestone card */}
                           <div style={{ flex: 1, paddingBottom: idx < upcomingMs.length - 1 ? "16px" : "0" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2px", gap: "8px" }}>
                               <span style={{ fontSize: "13px", fontWeight: isNext ? "700" : "600", color: isNext ? "var(--c-accent-lt)" : isPast ? "var(--c-text-4)" : "var(--c-text)" }}>{m.name}</span>
@@ -1278,11 +1347,22 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   </div>
                 )}
 
-                {/* Past due */}
+                {/* ── 5. QA/QC Open Issues ───────────────────────────── */}
+                {qaqcThreads.length > 0 && (
+                  <div style={{ marginBottom: "24px" }}>
+                    <h3 style={{ color: "var(--c-warn)", margin: "0 0 12px", fontSize: "14px", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
+                      🚩 QA/QC — Open Issues
+                      <span style={{ background: "var(--c-warn)", color: "white", borderRadius: "20px", padding: "1px 9px", fontSize: "12px" }}>{qaqcThreads.length}</span>
+                    </h3>
+                    <div style={{ display: "grid", gap: "12px" }}>
+                      {qaqcThreads.map((t) => renderQaqcThread(t, false))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── 6. Past Due / Due Soon / In Progress ──────────── */}
                 <DueList items={pastDueItems} title={`⚠ Past Due (${pastDueItems.length})`} color="var(--c-err)" />
-                {/* Due soon */}
                 <DueList items={dueSoonItems} title={`⏰ Due Soon — next 7 days (${dueSoonItems.length})`} color="var(--c-warn)" />
-                {/* In progress */}
                 {inProgressItems.length > 0 && (
                   <div style={{ marginBottom: "24px" }}>
                     <h3 style={{ color: "var(--c-purple)", margin: "0 0 10px", fontSize: "14px", fontWeight: "700" }}>▶ In Progress ({inProgressItems.length})</h3>
@@ -1301,7 +1381,26 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                     </div>
                   </div>
                 )}
-                {qaqcAlerts.length === 0 && pastDueItems.length === 0 && dueSoonItems.length === 0 && inProgressItems.length === 0 && (
+
+                {/* ── 7. Resolved QA/QC (collapsed history) ─────────── */}
+                {resolvedQaqcThreads.length > 0 && (
+                  <div style={{ marginBottom: "24px" }}>
+                    <button onClick={() => setResolvedExpanded((v) => !v)}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", background: "none", border: "none", cursor: "pointer", padding: "0", marginBottom: resolvedExpanded ? "12px" : "0" }}>
+                      <span style={{ fontSize: "14px", fontWeight: "700", color: "var(--c-ok-text)" }}>✓ Resolved QA/QC</span>
+                      <span style={{ fontSize: "12px", color: "var(--c-text-4)", background: "var(--c-surface)", border: "1px solid var(--c-border)", borderRadius: "20px", padding: "1px 9px" }}>{resolvedQaqcThreads.length}</span>
+                      <span style={{ fontSize: "12px", color: "var(--c-text-4)" }}>{resolvedExpanded ? "▲" : "▼"}</span>
+                    </button>
+                    {resolvedExpanded && (
+                      <div style={{ display: "grid", gap: "12px" }}>
+                        {resolvedQaqcThreads.map((t) => renderQaqcThread(t, true))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* All clear */}
+                {qaqcThreads.length === 0 && pastDueItems.length === 0 && dueSoonItems.length === 0 && inProgressItems.length === 0 && (
                   <p style={{ color: "var(--c-text-3)", textAlign: "center", paddingTop: "20px" }}>No alerts — all clear! 🎉</p>
                 )}
               </>
