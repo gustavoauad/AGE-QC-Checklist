@@ -372,14 +372,19 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   };
 
   const resolveAlert = async (commentId) => {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("checklist_comments")
       .update({ is_resolved: true, resolved_at: new Date().toISOString(), resolved_by: session.user.id })
-      .eq("id", commentId)
-      .select();
-    console.log("[resolveAlert]", { commentId, data, error });
+      .eq("id", commentId);
     if (!error) { setQaqcAlertsLoaded(false); await loadQaqcAlerts(true); }
-    else alert("Resolve failed: " + error.message);
+  };
+
+  const unresolveAlert = async (commentId) => {
+    const { error } = await supabase
+      .from("checklist_comments")
+      .update({ is_resolved: false, resolved_at: null, resolved_by: null })
+      .eq("id", commentId);
+    if (!error) { setQaqcAlertsLoaded(false); await loadQaqcAlerts(true); }
   };
 
   const submitDashReply = async (itemId) => {
@@ -1161,6 +1166,12 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                               <button onClick={() => resolveAlert(c.id)}
                                 style={{ fontSize: "11px", fontWeight: "600", color: "var(--c-ok-text)", background: "var(--c-ok-bg)", border: "1px solid var(--c-ok)", borderRadius: "6px", padding: "2px 9px", cursor: "pointer", whiteSpace: "nowrap" }}>
                                 ✓ Resolve
+                              </button>
+                            )}
+                            {isFlag && isFlagResolved && (
+                              <button onClick={() => unresolveAlert(c.id)}
+                                style={{ fontSize: "11px", fontWeight: "600", color: "var(--c-warn)", background: "var(--c-warn-bg)", border: "1px solid var(--c-warn)", borderRadius: "6px", padding: "2px 9px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                                ↩ Reopen
                               </button>
                             )}
                           </div>
