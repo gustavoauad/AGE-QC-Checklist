@@ -372,11 +372,14 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   };
 
   const resolveAlert = async (commentId) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("checklist_comments")
       .update({ is_resolved: true, resolved_at: new Date().toISOString(), resolved_by: session.user.id })
-      .eq("id", commentId);
+      .eq("id", commentId)
+      .select();
+    console.log("[resolveAlert]", { commentId, data, error });
     if (!error) { setQaqcAlertsLoaded(false); await loadQaqcAlerts(true); }
+    else alert("Resolve failed: " + error.message);
   };
 
   const submitDashReply = async (itemId) => {
