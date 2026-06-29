@@ -261,7 +261,6 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
           "\n\nProceed?"
         );
         if (!ok) return;
-        const now2 = new Date().toISOString();
         const naUpdates = { status: "na", completed_by: null, completed_at: null, in_progress_by: null, in_progress_at: null };
         await Promise.all(toNa.map((c) => supabase.from("checklists").update(naUpdates).eq("id", c.id)));
         setChecklists((prev) => prev.map((c) => toNa.find((x) => x.id === c.id) ? { ...c, ...naUpdates } : c));
@@ -965,7 +964,6 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
 
                 milestones.map((m) => {
                   const isActive = activeMilestoneId === m.id;
-                  const progress = getMilestoneProgress(m.id);
                   const daysUntil = Math.ceil((new Date(m.date + "T00:00:00") - new Date()) / (1000 * 60 * 60 * 24));
                   const isAlert = daysUntil >= 0 && daysUntil <= m.days_before_alert;
                   return (

@@ -259,7 +259,7 @@ function ChecklistsTab({ project, userRole }) {
     setItemDeps((prev) => {
       const next = { ...prev };
       next[itemId] = new Set(next[itemId] || []);
-      add ? next[itemId].add(depOnId) : next[itemId].delete(depOnId);
+      if (add) next[itemId].add(depOnId); else next[itemId].delete(depOnId);
       return next;
     });
     if (add) {
@@ -348,7 +348,7 @@ function ChecklistsTab({ project, userRole }) {
     setItemMilestones((prev) => {
       const next = { ...prev };
       next[itemId] = new Set(next[itemId] || []);
-      add ? next[itemId].add(milestoneId) : next[itemId].delete(milestoneId);
+      if (add) next[itemId].add(milestoneId); else next[itemId].delete(milestoneId);
       return next;
     });
     if (add) {
@@ -372,7 +372,7 @@ function ChecklistsTab({ project, userRole }) {
       const next = { ...prev };
       toChange.forEach((id) => {
         next[id] = new Set(next[id] || []);
-        add ? next[id].add(milestoneId) : next[id].delete(milestoneId);
+        if (add) next[id].add(milestoneId); else next[id].delete(milestoneId);
       });
       return next;
     });

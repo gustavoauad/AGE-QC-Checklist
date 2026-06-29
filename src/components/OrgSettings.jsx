@@ -303,7 +303,7 @@ function ChecklistsTab({ org, orgRole }) {
 
   const toggleProject = (id) => setSelectedProjIds((prev) => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
 
@@ -483,7 +483,7 @@ function ChecklistsTab({ org, orgRole }) {
     setOrgItemDeps((prev) => {
       const next = { ...prev };
       next[itemId] = new Set(next[itemId] || []);
-      add ? next[itemId].add(depOnId) : next[itemId].delete(depOnId);
+      if (add) next[itemId].add(depOnId); else next[itemId].delete(depOnId);
       return next;
     });
     if (add) {
