@@ -185,18 +185,14 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     const now = new Date().toISOString();
     const updates = {
       status: newStatus,
-      updated_by: session.user.id,
-      updated_at: now,
       completed_by: newStatus === "complete" ? session.user.id : null,
       completed_at: newStatus === "complete" ? now : null,
+      in_progress_by: newStatus === "in_progress" ? session.user.id : null,
+      in_progress_at: newStatus === "in_progress" ? now : null,
     };
-    // Only touch in_progress columns if they exist on this row (migration applied)
-    if ("in_progress_by" in item) {
-      updates.in_progress_by = newStatus === "in_progress" ? session.user.id : null;
-      updates.in_progress_at = newStatus === "in_progress" ? now : null;
-    }
     const { error } = await supabase.from("checklists").update(updates).eq("id", item.id);
-    if (!error) setChecklists((prev) => prev.map((c) => c.id === item.id ? { ...c, ...updates } : c));
+    if (error) console.error("Status update failed:", error.message);
+    else setChecklists((prev) => prev.map((c) => c.id === item.id ? { ...c, ...updates } : c));
     setUpdating(null);
   };
 
