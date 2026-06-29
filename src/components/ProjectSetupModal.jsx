@@ -964,6 +964,7 @@ function MembersTab({ project, session, userRole, org }) {
                 <option value="project_manager">Project Manager</option>
                 <option value="engineer">Engineer</option>
                 <option value="drafter">Drafter</option>
+                <option value="qaqc">QA/QC</option>
               </select>
             </div>
             <button type="submit" disabled={adding || !selectedUserId} style={{
@@ -1000,6 +1001,7 @@ function MembersTab({ project, session, userRole, org }) {
                   <option value="project_manager">Project Manager</option>
                   <option value="engineer">Engineer</option>
                   <option value="drafter">Drafter</option>
+                  <option value="qaqc">QA/QC</option>
                 </select>
                 {m.user_id !== session.user.id && (
                   <button onClick={() => removeMember(m.id)} style={{ background: "none", border: "1px solid #334155", color: "var(--c-err)", cursor: "pointer", padding: "5px 10px", borderRadius: "6px", fontSize: "12px" }}>
