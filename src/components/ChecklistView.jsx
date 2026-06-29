@@ -52,6 +52,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
 
   const [itemMsMap, setItemMsMap] = useState({}); // itemId → [milestoneName, ...]
   const [commentMeta, setCommentMeta] = useState({}); // itemId → { count, hasQaqc }
+  const [itemDeps, setItemDeps] = useState({}); // itemId → Set<parentId>
 
   const fetchAll = async () => {
     setLoading(true);
@@ -103,6 +104,20 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       });
       setItemMsIdMap(imIdMap);
     }
+    // Load item dependencies
+    if (items.length > 0) {
+      const { data: depsData } = await supabase
+        .from("checklist_item_dependencies")
+        .select("item_id, depends_on_item_id")
+        .in("item_id", items.map((c) => c.id));
+      const dMap = {};
+      (depsData || []).forEach(({ item_id, depends_on_item_id }) => {
+        if (!dMap[item_id]) dMap[item_id] = new Set();
+        dMap[item_id].add(depends_on_item_id);
+      });
+      setItemDeps(dMap);
+    }
+
     const userIds = (memberRes.data || []).map((r) => r.user_id);
     if (userIds.length > 0) {
       const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
@@ -197,8 +212,62 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     return dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : null;
   };
 
+  // Returns all items that (transitively) depend on itemId (children + grandchildren…)
+  const getDescendants = (itemId) => {
+    const reverseDeps = {};
+    Object.entries(itemDeps).forEach(([childId, parentSet]) => {
+      parentSet.forEach((pid) => {
+        if (!reverseDeps[pid]) reverseDeps[pid] = [];
+        reverseDeps[pid].push(childId);
+      });
+    });
+    const result = [];
+    const stack = reverseDeps[itemId] || [];
+    const visited = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (visited.has(id)) continue;
+      visited.add(id);
+      result.push(id);
+      (reverseDeps[id] || []).forEach((c) => stack.push(c));
+    }
+    return result;
+  };
+
   const handleStatusChange = async (item, newStatus) => {
     if (!canEdit(item.category)) return;
+
+    // Block completion if any parent dependency is not yet complete
+    if (newStatus === "complete") {
+      const parentIds = [...(itemDeps[item.id] || new Set())];
+      const incomplete = checklists.filter((c) => parentIds.includes(c.id) && c.status !== "complete" && c.status !== "na");
+      if (incomplete.length > 0) {
+        alert(
+          `Cannot mark as complete — the following ${incomplete.length === 1 ? "dependency" : "dependencies"} must be completed first:\n\n` +
+          incomplete.map((c) => `• ${refCodes[c.id] ? refCodes[c.id] + "  " : ""}${c.item_text}`).join("\n")
+        );
+        return;
+      }
+    }
+
+    // N/A cascade: if marking N/A, auto-cascade to all dependent children
+    if (newStatus === "na") {
+      const descendantIds = getDescendants(item.id);
+      const toNa = checklists.filter((c) => descendantIds.includes(c.id) && c.status !== "na");
+      if (toNa.length > 0) {
+        const ok = window.confirm(
+          `Marking this item as N/A will also mark ${toNa.length} dependent item${toNa.length > 1 ? "s" : ""} as N/A:\n\n` +
+          toNa.map((c) => `• ${refCodes[c.id] ? refCodes[c.id] + "  " : ""}${c.item_text}`).join("\n") +
+          "\n\nProceed?"
+        );
+        if (!ok) return;
+        const now2 = new Date().toISOString();
+        const naUpdates = { status: "na", completed_by: null, completed_at: null, in_progress_by: null, in_progress_at: null };
+        await Promise.all(toNa.map((c) => supabase.from("checklists").update(naUpdates).eq("id", c.id)));
+        setChecklists((prev) => prev.map((c) => toNa.find((x) => x.id === c.id) ? { ...c, ...naUpdates } : c));
+      }
+    }
+
     setUpdating(item.id);
     const now = new Date().toISOString();
     const updates = {
@@ -434,6 +503,18 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 💬 {meta.count}
               </span>
             )}
+            {/* Dependency chips */}
+            {[...(itemDeps[item.id] || new Set())].map((parentId) => {
+              const parent = checklists.find((c) => c.id === parentId);
+              if (!parent) return null;
+              const parentDone = parent.status === "complete" || parent.status === "na";
+              return (
+                <span key={parentId} title={`Depends on: ${parent.item_text}`}
+                  style={{ fontSize: "10px", fontWeight: "600", color: parentDone ? "var(--c-ok-text)" : "var(--c-warn)", background: parentDone ? "var(--c-ok-bg)" : "var(--c-warn-bg)", border: `1px solid ${parentDone ? "var(--c-ok)" : "var(--c-warn)"}`, padding: "2px 8px", borderRadius: "20px", cursor: "default", whiteSpace: "nowrap" }}>
+                  ⛓ {refCodes[parentId] || "dep"}
+                </span>
+              );
+            })}
 
             {/* Push status buttons and comment to the right */}
             <div style={{ flex: 1 }} />

@@ -66,6 +66,11 @@ function ChecklistsTab({ project, userRole }) {
   const [daysPopover, setDaysPopover] = useState(null);
   // editingDays: { itemId, milestoneId, val } — inline days input on a specific pill
   const [editingDays, setEditingDays] = useState(null);
+  // itemDeps: { [itemId]: Set<dependsOnItemId> }
+  const [itemDeps, setItemDeps] = useState({});
+  // depsPickerItemId: which item's dep picker is open
+  const [depsPickerItemId, setDepsPickerItemId] = useState(null);
+  const [depsPickerSearch, setDepsPickerSearch] = useState("");
   // itemMilestoneDays: { [itemId]: { [milestoneId]: number } }
   const [itemMilestoneDays, setItemMilestoneDays] = useState({});
 
@@ -111,6 +116,20 @@ function ChecklistsTab({ project, userRole }) {
       });
       setItemMilestones(imMap);
       setItemMilestoneDays(imdMap);
+    }
+    // Load item dependencies
+    const allItemIds = Object.values(itemMap).flat().map((i) => i.id);
+    if (allItemIds.length > 0) {
+      const { data: depsData } = await supabase
+        .from("checklist_item_dependencies")
+        .select("item_id, depends_on_item_id")
+        .in("item_id", allItemIds);
+      const dMap = {};
+      (depsData || []).forEach(({ item_id, depends_on_item_id }) => {
+        if (!dMap[item_id]) dMap[item_id] = new Set();
+        dMap[item_id].add(depends_on_item_id);
+      });
+      setItemDeps(dMap);
     }
     setLoading(false);
   };
@@ -216,6 +235,39 @@ function ChecklistsTab({ project, userRole }) {
       });
       return next;
     });
+  };
+
+  const wouldCreateCycle = (fromId, toId, depsMap) => {
+    if (fromId === toId) return true;
+    const visited = new Set();
+    const stack = [...(depsMap[toId] || new Set())];
+    while (stack.length) {
+      const curr = stack.pop();
+      if (curr === fromId) return true;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      for (const p of (depsMap[curr] || new Set())) stack.push(p);
+    }
+    return false;
+  };
+
+  const toggleDep = async (itemId, depOnId, add) => {
+    if (add && wouldCreateCycle(itemId, depOnId, itemDeps)) {
+      alert("Cannot add this dependency — it would create a circular dependency.");
+      return;
+    }
+    setItemDeps((prev) => {
+      const next = { ...prev };
+      next[itemId] = new Set(next[itemId] || []);
+      add ? next[itemId].add(depOnId) : next[itemId].delete(depOnId);
+      return next;
+    });
+    if (add) {
+      supabase.from("checklist_item_dependencies").insert({ item_id: itemId, depends_on_item_id: depOnId });
+    } else {
+      supabase.from("checklist_item_dependencies").delete()
+        .eq("item_id", itemId).eq("depends_on_item_id", depOnId);
+    }
   };
 
   const openDaysPopover = (type, catId, sectionLabel) => {
@@ -683,6 +735,59 @@ function ChecklistsTab({ project, userRole }) {
                                     })}
                                   </div>
                                 )}
+                                {canEdit && (() => {
+                                  const deps = [...(itemDeps[item.id] || new Set())];
+                                  const isPickerOpen = depsPickerItemId === item.id;
+                                  const allItems = Object.values(items).flat();
+                                  const filtered = allItems.filter((i) => i.id !== item.id && (!depsPickerSearch || i.item_text.toLowerCase().includes(depsPickerSearch.toLowerCase()) || refCodes[i.id]?.toLowerCase().includes(depsPickerSearch.toLowerCase())));
+                                  return (
+                                    <div style={{ display: "flex", gap: "4px", flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
+                                      {deps.map((depId) => {
+                                        const depItem = allItems.find((i) => i.id === depId);
+                                        if (!depItem) return null;
+                                        return (
+                                          <span key={depId} title={depItem.item_text}
+                                            style={{ fontSize: "9px", fontWeight: "600", color: "var(--c-purple)", background: "var(--c-purple-bg)", border: "1px solid var(--c-purple)", borderRadius: "20px", padding: "1px 6px", whiteSpace: "nowrap" }}>
+                                            ⛓ {refCodes[depId] || depItem.item_text.slice(0, 12)}
+                                          </span>
+                                        );
+                                      })}
+                                      <div style={{ position: "relative" }}>
+                                        <button onClick={(e) => { e.stopPropagation(); setDepsPickerItemId(isPickerOpen ? null : item.id); setDepsPickerSearch(""); }}
+                                          title="Set dependencies"
+                                          style={{ ...mBtn(), color: deps.length > 0 ? "var(--c-purple)" : "var(--c-text-4)", borderColor: deps.length > 0 ? "var(--c-purple)" : "#334155" }}>
+                                          ⛓
+                                        </button>
+                                        {isPickerOpen && (
+                                          <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 30, background: "var(--c-bg)", border: "1px solid var(--c-accent)", borderRadius: "10px", padding: "10px", minWidth: "260px", maxHeight: "280px", overflowY: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
+                                            <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-2)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Depends on (must complete first)</div>
+                                            <input autoFocus placeholder="Search items…" value={depsPickerSearch} onChange={(e) => setDepsPickerSearch(e.target.value)}
+                                              style={{ width: "100%", padding: "5px 8px", background: "var(--c-surface)", border: "1px solid #334155", borderRadius: "5px", color: "var(--c-text)", fontSize: "12px", marginBottom: "6px", boxSizing: "border-box" }}
+                                            />
+                                            {filtered.length === 0 && <div style={{ fontSize: "11px", color: "var(--c-text-4)", textAlign: "center", padding: "8px 0" }}>No items found</div>}
+                                            {filtered.map((i) => {
+                                              const checked = itemDeps[item.id]?.has(i.id) ?? false;
+                                              const circular = !checked && wouldCreateCycle(item.id, i.id, itemDeps);
+                                              return (
+                                                <label key={i.id} style={{ display: "flex", alignItems: "flex-start", gap: "7px", padding: "4px 2px", cursor: circular ? "not-allowed" : "pointer", opacity: circular ? 0.4 : 1 }}>
+                                                  <input type="checkbox" checked={checked} disabled={circular}
+                                                    onChange={() => toggleDep(item.id, i.id, !checked)}
+                                                    style={{ marginTop: "2px", flexShrink: 0 }}
+                                                  />
+                                                  <span style={{ fontSize: "11px", color: "var(--c-text-3)", lineHeight: 1.4 }}>
+                                                    {refCodes[i.id] && <span style={{ fontFamily: "monospace", fontSize: "9px", color: "var(--c-text-4)", marginRight: "4px" }}>{refCodes[i.id]}</span>}
+                                                    {i.item_text}
+                                                    {circular && <span style={{ marginLeft: "4px", fontSize: "9px", color: "var(--c-err)" }}>↻ circular</span>}
+                                                  </span>
+                                                </label>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                                 {canEdit && (
                                   <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
                                     {editingItemId === item.id
@@ -788,6 +893,59 @@ function ChecklistsTab({ project, userRole }) {
                                         })}
                                       </div>
                                     )}
+                                    {canEdit && (() => {
+                                      const deps = [...(itemDeps[item.id] || new Set())];
+                                      const isPickerOpen = depsPickerItemId === item.id;
+                                      const allItems = Object.values(items).flat();
+                                      const filtered = allItems.filter((i) => i.id !== item.id && (!depsPickerSearch || i.item_text.toLowerCase().includes(depsPickerSearch.toLowerCase()) || refCodes[i.id]?.toLowerCase().includes(depsPickerSearch.toLowerCase())));
+                                      return (
+                                        <div style={{ display: "flex", gap: "4px", flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
+                                          {deps.map((depId) => {
+                                            const depItem = allItems.find((i) => i.id === depId);
+                                            if (!depItem) return null;
+                                            return (
+                                              <span key={depId} title={depItem.item_text}
+                                                style={{ fontSize: "9px", fontWeight: "600", color: "var(--c-purple)", background: "var(--c-purple-bg)", border: "1px solid var(--c-purple)", borderRadius: "20px", padding: "1px 6px", whiteSpace: "nowrap" }}>
+                                                ⛓ {refCodes[depId] || depItem.item_text.slice(0, 12)}
+                                              </span>
+                                            );
+                                          })}
+                                          <div style={{ position: "relative" }}>
+                                            <button onClick={(e) => { e.stopPropagation(); setDepsPickerItemId(isPickerOpen ? null : item.id); setDepsPickerSearch(""); }}
+                                              title="Set dependencies"
+                                              style={{ ...mBtn(), color: deps.length > 0 ? "var(--c-purple)" : "var(--c-text-4)", borderColor: deps.length > 0 ? "var(--c-purple)" : "#334155" }}>
+                                              ⛓
+                                            </button>
+                                            {isPickerOpen && (
+                                              <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 30, background: "var(--c-bg)", border: "1px solid var(--c-accent)", borderRadius: "10px", padding: "10px", minWidth: "260px", maxHeight: "280px", overflowY: "auto", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
+                                                <div style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-2)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Depends on (must complete first)</div>
+                                                <input autoFocus placeholder="Search items…" value={depsPickerSearch} onChange={(e) => setDepsPickerSearch(e.target.value)}
+                                                  style={{ width: "100%", padding: "5px 8px", background: "var(--c-surface)", border: "1px solid #334155", borderRadius: "5px", color: "var(--c-text)", fontSize: "12px", marginBottom: "6px", boxSizing: "border-box" }}
+                                                />
+                                                {filtered.length === 0 && <div style={{ fontSize: "11px", color: "var(--c-text-4)", textAlign: "center", padding: "8px 0" }}>No items found</div>}
+                                                {filtered.map((i) => {
+                                                  const checked = itemDeps[item.id]?.has(i.id) ?? false;
+                                                  const circular = !checked && wouldCreateCycle(item.id, i.id, itemDeps);
+                                                  return (
+                                                    <label key={i.id} style={{ display: "flex", alignItems: "flex-start", gap: "7px", padding: "4px 2px", cursor: circular ? "not-allowed" : "pointer", opacity: circular ? 0.4 : 1 }}>
+                                                      <input type="checkbox" checked={checked} disabled={circular}
+                                                        onChange={() => toggleDep(item.id, i.id, !checked)}
+                                                        style={{ marginTop: "2px", flexShrink: 0 }}
+                                                      />
+                                                      <span style={{ fontSize: "11px", color: "var(--c-text-3)", lineHeight: 1.4 }}>
+                                                        {refCodes[i.id] && <span style={{ fontFamily: "monospace", fontSize: "9px", color: "var(--c-text-4)", marginRight: "4px" }}>{refCodes[i.id]}</span>}
+                                                        {i.item_text}
+                                                        {circular && <span style={{ marginLeft: "4px", fontSize: "9px", color: "var(--c-err)" }}>↻ circular</span>}
+                                                      </span>
+                                                    </label>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                     {canEdit && (
                                       <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
                                         {editingItemId === item.id
