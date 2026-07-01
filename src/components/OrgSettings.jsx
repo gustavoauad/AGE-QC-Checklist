@@ -210,6 +210,7 @@ function MembersTab({ org, session, orgRole }) {
 
 // ── Checklists tab ───────────────────────────────────────────────────────────
 function ChecklistsTab({ org, orgRole }) {
+  const isMobile = useIsMobile();
   const [config, setConfig] = useState({});
   const [customCats, setCustomCats] = useState([]);
   const [items, setItems] = useState({});
