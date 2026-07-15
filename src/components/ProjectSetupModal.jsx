@@ -344,8 +344,8 @@ function ChecklistsTab({ project, userRole }) {
     setSections((p) => ({ ...p, [catId]: (p[catId] || []).filter((s) => s !== label) }));
   };
 
-  const toggleItemMilestone = (itemId, milestoneId, add) => {
-    // Optimistic state update — no await needed, DB call is fire-and-forget
+  const toggleItemMilestone = async (itemId, milestoneId, add) => {
+    // Optimistic state update
     setItemMilestones((prev) => {
       const next = { ...prev };
       next[itemId] = new Set(next[itemId] || []);
@@ -353,14 +353,35 @@ function ChecklistsTab({ project, userRole }) {
       return next;
     });
     if (add) {
-      supabase.from("milestone_items").insert({ milestone_id: milestoneId, checklist_item_id: itemId });
+      const { error } = await supabase.from("milestone_items")
+        .upsert({ milestone_id: milestoneId, checklist_item_id: itemId }, { onConflict: "milestone_id,checklist_item_id" });
+      if (error) {
+        console.error("milestone_items insert failed:", error);
+        // Revert optimistic update
+        setItemMilestones((prev) => {
+          const next = { ...prev };
+          next[itemId] = new Set(next[itemId] || []);
+          next[itemId].delete(milestoneId);
+          return next;
+        });
+      }
     } else {
-      supabase.from("milestone_items").delete()
+      const { error } = await supabase.from("milestone_items").delete()
         .eq("milestone_id", milestoneId).eq("checklist_item_id", itemId);
+      if (error) {
+        console.error("milestone_items delete failed:", error);
+        // Revert optimistic update
+        setItemMilestones((prev) => {
+          const next = { ...prev };
+          next[itemId] = new Set(next[itemId] || []);
+          next[itemId].add(milestoneId);
+          return next;
+        });
+      }
     }
   };
 
-  const bulkToggleMilestone = (itemIds, milestoneId, add) => {
+  const bulkToggleMilestone = async (itemIds, milestoneId, add) => {
     // Determine which items actually need to change
     const toChange = itemIds.filter((id) => {
       const has = itemMilestones[id]?.has(milestoneId) ?? false;
@@ -380,12 +401,15 @@ function ChecklistsTab({ project, userRole }) {
 
     // Single batched DB call
     if (add) {
-      supabase.from("milestone_items").insert(
-        toChange.map((id) => ({ milestone_id: milestoneId, checklist_item_id: id }))
+      const { error } = await supabase.from("milestone_items").upsert(
+        toChange.map((id) => ({ milestone_id: milestoneId, checklist_item_id: id })),
+        { onConflict: "milestone_id,checklist_item_id" }
       );
+      if (error) console.error("bulk milestone insert failed:", error);
     } else {
-      supabase.from("milestone_items").delete()
+      const { error } = await supabase.from("milestone_items").delete()
         .eq("milestone_id", milestoneId).in("checklist_item_id", toChange);
+      if (error) console.error("bulk milestone delete failed:", error);
     }
   };
 
