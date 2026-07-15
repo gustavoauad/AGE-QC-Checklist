@@ -198,9 +198,17 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     if (!activeCategory && enabledCategories.length > 0) setActiveCategory(enabledCategories[0].id);
   }, [categoryConfig, loading]);
 
-  const canEdit = (category) => {
+  // Gates ✓/▶/N/A status buttons — QAQC cannot change status
+  const canChangeStatus = (category) => {
     if (userRole === "project_manager") return true;
-    if (userRole === "qaqc") return true;
+    if (userRole === "engineer") return category !== "drafting";
+    if (userRole === "drafter") return category === "drafting";
+    return false;
+  };
+
+  // Gates sidebar dimming and "View only" banner — QAQC can comment + manage items
+  const canInteract = (category) => {
+    if (userRole === "project_manager" || userRole === "qaqc") return true;
     if (userRole === "engineer") return category !== "drafting";
     if (userRole === "drafter") return category === "drafting";
     return false;
@@ -255,7 +263,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   };
 
   const handleStatusChange = async (item, newStatus) => {
-    if (!canEdit(item.category)) return;
+    if (!canChangeStatus(item.category)) return;
 
     // Block completion if any parent dependency is not yet complete
     if (newStatus === "complete") {
@@ -521,7 +529,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
 
   // ── Item renderer ──────────────────────────────────────────────────────────
   const renderItem = (item, idx, totalInGroup) => {
-    const editable = canEdit(item.category);
+    const editable = canChangeStatus(item.category);
     const status = item.status || "pending";
     const isUpdating = updating === item.id;
     const completedByName = item.completed_by ? (profilesMap[item.completed_by]?.full_name || "Unknown") : null;
@@ -609,7 +617,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 })}
               </div>
             )}
-            {!editable && (
+            {!editable && !canInteract(item.category) && (
               <span style={{ fontSize: "11px", color: "var(--c-text-4)", fontStyle: "italic", flexShrink: 0 }}>view only</span>
             )}
 
@@ -1025,15 +1033,28 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 const { done, applicable, pct } = getCategoryStats(cat.id);
                 const isActive = activeCategory === cat.id;
                 const isDone = applicable > 0 && done === applicable;
+                const todayCat = new Date(); todayCat.setHours(0, 0, 0, 0);
+                const catAlerts = checklists.filter((c) => {
+                  if (c.category !== cat.id || c.status === "complete" || c.status === "na") return false;
+                  const dd = getItemDueDate(c);
+                  if (!dd) return false;
+                  return Math.ceil((dd - todayCat) / 86400000) <= 7;
+                });
                 return (
                   <button key={cat.id} onClick={() => setActiveCategory(cat.id)} style={{
                     width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "8px 10px", marginBottom: "4px", border: "none", borderRadius: "8px",
                     background: isActive ? "var(--c-accent)" : "transparent",
-                    color: isActive ? "white" : canEdit(cat.id) ? "var(--c-text)" : "var(--c-text-3)",
+                    color: isActive ? "white" : canInteract(cat.id) ? "var(--c-text)" : "var(--c-text-3)",
                     cursor: "pointer", fontSize: "13px", textAlign: "left",
                   }}>
                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat.label}</span>
+                    {catAlerts.length > 0 && !isActive && (
+                      <span title={`${catAlerts.length} item${catAlerts.length > 1 ? "s" : ""} due soon or overdue`}
+                        style={{ fontSize: "9px", fontWeight: "700", color: "var(--c-warn)", marginLeft: "4px", flexShrink: 0 }}>
+                        ⏰{catAlerts.length}
+                      </span>
+                    )}
                     <span style={{ fontSize: "10px", fontWeight: "600", flexShrink: 0, marginLeft: "6px",
                       color: isActive ? "rgba(255,255,255,0.85)" : isDone ? "var(--c-ok-text)" : "var(--c-text-3)",
                       whiteSpace: "nowrap" }}>
@@ -1460,16 +1481,40 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
             );
           })() : viewMode === "category" ? (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
                 <h2 style={{ color: "var(--c-text)", margin: 0, fontSize: isMobile ? "16px" : "20px" }}>
                   {getCatLabel(activeCategory)}
                 </h2>
-                {activeCategory && !canEdit(activeCategory) && (
+                {activeCategory && !canInteract(activeCategory) && (
                   <span style={{ fontSize: "11px", color: "var(--c-warn)", background: "var(--c-warn-bg)", padding: "4px 10px", borderRadius: "20px", border: "1px solid #f59e0b" }}>
                     View only
                   </span>
                 )}
               </div>
+              {(() => {
+                const todayCv = new Date(); todayCv.setHours(0, 0, 0, 0);
+                const catDue = checklists
+                  .filter((c) => c.category === activeCategory && c.status !== "complete" && c.status !== "na")
+                  .map((c) => ({ ...c, _dueDate: getItemDueDate(c) }))
+                  .filter((c) => c._dueDate);
+                const pastDue = catDue.filter((c) => c._dueDate < todayCv);
+                const dueSoon = catDue.filter((c) => { const d = Math.ceil((c._dueDate - todayCv) / 86400000); return d >= 0 && d <= 7; });
+                if (pastDue.length === 0 && dueSoon.length === 0) return null;
+                return (
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+                    {pastDue.length > 0 && (
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--c-err)", background: "var(--c-err-bg)", border: "1px solid #7f1d1d", borderRadius: "6px", padding: "4px 10px" }}>
+                        ⚠ {pastDue.length} item{pastDue.length > 1 ? "s" : ""} past due
+                      </span>
+                    )}
+                    {dueSoon.length > 0 && (
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--c-warn)", background: "var(--c-warn-bg)", border: "1px solid var(--c-warn)", borderRadius: "6px", padding: "4px 10px" }}>
+                        ⏰ {dueSoon.length} item{dueSoon.length > 1 ? "s" : ""} due within 7 days
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               {Object.entries(groupedCategoryItems).map(([sub, items]) => renderSection(sub, items))}
             </>
           ) : (

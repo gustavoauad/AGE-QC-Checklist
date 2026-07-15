@@ -218,14 +218,14 @@ function ChecklistsTab({ project, userRole }) {
   const saveMilestoneDays = async (itemIds, milestoneId, daysStr) => {
     const days = daysStr === "" ? null : parseInt(daysStr, 10);
     if (days !== null && (isNaN(days) || days < 0)) return;
-    // Only update rows that actually exist in milestone_items
     const targets = itemIds.filter((id) => itemMilestones[id]?.has(milestoneId));
     if (!targets.length) return;
     await Promise.all(targets.map((id) =>
       supabase.from("milestone_items")
-        .update({ days_before: days })
-        .eq("checklist_item_id", id)
-        .eq("milestone_id", milestoneId)
+        .upsert(
+          { checklist_item_id: id, milestone_id: milestoneId, days_before: days },
+          { onConflict: "checklist_item_id,milestone_id" }
+        )
     ));
     setItemMilestoneDays((prev) => {
       const next = { ...prev };
