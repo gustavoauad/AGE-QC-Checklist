@@ -295,19 +295,21 @@ export default function OrgDashboard({ session, org }) {
                           const isToday = toDateKey(today) === dateKey;
                           return (
                             <div key={dateKey} style={{
-                              minHeight: isMobile ? "56px" : "72px", padding: "4px", borderRadius: "6px",
+                              minHeight: isMobile ? "56px" : "76px", padding: "4px", borderRadius: "6px",
                               background: isToday ? "var(--c-accent-dk)" : "var(--c-bg)",
                               border: `1px solid ${isToday ? "var(--c-accent)" : "var(--c-border)"}`,
                               display: "flex", flexDirection: "column", gap: "2px", overflow: "hidden",
                             }}>
                               <span style={{ fontSize: "11px", color: isToday ? "var(--c-accent-lt)" : "var(--c-text-3)", fontWeight: isToday ? "700" : "400" }}>{day}</span>
                               {dayMs.slice(0, isMobile ? 1 : 2).map((m) => (
-                                <span key={m.id} title={`${m.name} — ${m.project?.name}`} style={{
-                                  fontSize: "9px", fontWeight: "600", color: "var(--c-warn)", background: "var(--c-warn-bg)",
+                                <span key={m.id} title={`${m.project?.name} — ${m.name}`} style={{
+                                  display: "flex", flexDirection: "column", gap: "1px",
+                                  fontWeight: "600", color: "var(--c-warn)", background: "var(--c-warn-bg)",
                                   border: "1px solid var(--c-warn)", borderRadius: "3px", padding: "1px 4px",
-                                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                  overflow: "hidden",
                                 }}>
-                                  {m.name}
+                                  <span style={{ fontSize: "9px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.project?.name}</span>
+                                  <span style={{ fontSize: "8px", fontWeight: "400", opacity: 0.85, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</span>
                                 </span>
                               ))}
                               {dayMs.length > (isMobile ? 1 : 2) && (
