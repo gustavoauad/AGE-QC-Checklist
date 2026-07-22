@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { CATEGORIES } from "../checklistTemplate";
 import { useIsMobile } from "../useIsMobile";
@@ -47,6 +47,56 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
         setChecklists((prev) =>
           prev.map((c) => c.id === payload.new.id ? { ...c, ...payload.new } : c)
         );
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [project.id]);
+
+  // checklist_comments has no project_id column, so the realtime filter can't scope by
+  // project server-side — every row is checked client-side against this project's items.
+  // Refs keep these callbacks (set up once per project) reading current data instead of
+  // whatever was in scope the moment the subscription was created.
+  const checklistsRef = useRef(checklists);
+  useEffect(() => { checklistsRef.current = checklists; });
+  const loadQaqcAlertsRef = useRef(null);
+  useEffect(() => { loadQaqcAlertsRef.current = loadQaqcAlerts; });
+  // Comment ids this client just inserted itself — the realtime echo for our own insert
+  // would otherwise double-append it on top of the optimistic local update.
+  const recentlyInsertedCommentIds = useRef(new Set());
+
+  // Real-time: reflect comments (and QA/QC flag/resolve changes) from other users instantly,
+  // matching how checklist status updates already appear live instead of only after a reload.
+  useEffect(() => {
+    const ch = supabase
+      .channel(`comments-${project.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checklist_comments" }, (payload) => {
+        const c = payload.new;
+        if (!checklistsRef.current.some((item) => item.id === c.checklist_item_id)) return;
+        if (recentlyInsertedCommentIds.current.has(c.id)) {
+          recentlyInsertedCommentIds.current.delete(c.id);
+          return;
+        }
+        setCommentsCache((prev) => {
+          const existing = prev[c.checklist_item_id];
+          if (!existing) return prev; // thread not open/loaded yet — fetchComments will pick it up
+          if (existing.some((x) => x.id === c.id)) return prev;
+          return { ...prev, [c.checklist_item_id]: [...existing, c] };
+        });
+        setCommentMeta((prev) => {
+          const cur = prev[c.checklist_item_id] || { count: 0, hasQaqc: false };
+          return { ...prev, [c.checklist_item_id]: { count: cur.count + 1, hasQaqc: cur.hasQaqc || !!c.is_qaqc_flagged } };
+        });
+        if (c.is_qaqc_flagged) loadQaqcAlertsRef.current?.(true);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "checklist_comments" }, (payload) => {
+        const c = payload.new;
+        if (!checklistsRef.current.some((item) => item.id === c.checklist_item_id)) return;
+        setCommentsCache((prev) => {
+          const existing = prev[c.checklist_item_id];
+          if (!existing) return prev;
+          return { ...prev, [c.checklist_item_id]: existing.map((x) => x.id === c.id ? { ...x, ...c } : x) };
+        });
+        if (c.is_qaqc_flagged || payload.old?.is_qaqc_flagged) loadQaqcAlertsRef.current?.(true);
       })
       .subscribe();
     return () => supabase.removeChannel(ch);
@@ -478,12 +528,16 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       is_qaqc_flagged: userRole === "qaqc",
     }).select().single();
     if (!error && data) {
+      recentlyInsertedCommentIds.current.add(data.id);
       setCommentsCache((prev) => ({ ...prev, [itemId]: [...(prev[itemId] || []), data] }));
       setCommentMeta((prev) => {
         const cur = prev[itemId] || { count: 0, hasQaqc: false };
         return { ...prev, [itemId]: { count: cur.count + 1, hasQaqc: cur.hasQaqc || !!data.is_qaqc_flagged } };
       });
-      setQaqcAlertsLoaded(false); // refresh dashboard alerts on next open
+      // Refresh the dashboard's QA/QC alerts right away instead of waiting for the
+      // next time the Dashboard tab happens to be opened.
+      if (data.is_qaqc_flagged) { setQaqcAlertsLoaded(false); loadQaqcAlerts(true); }
+      else setQaqcAlertsLoaded(false);
       setCommentText("");
     }
     setAddingComment(false);
@@ -563,15 +617,17 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       is_qaqc_flagged: userRole === "qaqc",
     }).select().single();
     if (!error && data) {
+      recentlyInsertedCommentIds.current.add(data.id);
       setCommentsCache((prev) => ({ ...prev, [itemId]: [...(prev[itemId] || []), data] }));
       setCommentMeta((prev) => {
         const cur = prev[itemId] || { count: 0, hasQaqc: false };
         return { ...prev, [itemId]: { count: cur.count + 1, hasQaqc: cur.hasQaqc || !!data.is_qaqc_flagged } };
       });
       setDashReplyText((prev) => ({ ...prev, [itemId]: "" }));
-      setQaqcAlertsLoaded(false);
-      setQaqcThreads([]); setResolvedQaqcThreads([]);
-      await loadQaqcAlerts();
+      // Reload in place (force=true) without clearing the current lists first — clearing
+      // them made the "No alerts — all clear!" empty state flash on screen until the
+      // refetch finished, even though nothing had actually been resolved.
+      await loadQaqcAlerts(true);
     }
     setDashReplying(null);
   };
