@@ -58,7 +58,7 @@ export default function AuthScreen() {
           <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
             <AgeLogo height={40} />
           </div>
-          <p style={{ color: "#777f8f", fontSize: "12px", margin: 0, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600" }}>QC Checklist</p>
+          <p style={{ color: "#777f8f", fontSize: "12px", margin: 0, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: "600" }}>QAQC Checklist</p>
         </div>
 
         {/* Tabs */}

@@ -15,7 +15,7 @@ const noCacheHtmlPlugin = () => ({
 
 export default defineConfig({
   plugins: [react(), noCacheHtmlPlugin()],
-  base: '/AGE-QC-Checklist/',
+  base: '/AGE-QAQC-Checklist/',
   build: {
     outDir: 'docs',
     emptyOutDir: true,
