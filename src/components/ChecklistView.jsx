@@ -353,6 +353,31 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     return result;
   };
 
+  // Returns all items itemId (transitively) depends on (parents + grandparents…) — the
+  // mirror of getDescendants, used to check whether any ancestor is currently N/A.
+  const getAncestors = (itemId) => {
+    const result = [];
+    const stack = [...(itemDeps[itemId] || new Set())];
+    const visited = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (visited.has(id)) continue;
+      visited.add(id);
+      result.push(id);
+      (itemDeps[id] || new Set()).forEach((p) => stack.push(p));
+    }
+    return result;
+  };
+
+  // An item stays locked as N/A for as long as any of its dependencies (direct or
+  // transitive) is itself N/A — it shouldn't be editable independently of the parent,
+  // and it should automatically revert once no ancestor is N/A anymore.
+  const isNaLockedByParent = (itemId) => {
+    const ancestorIds = getAncestors(itemId);
+    if (!ancestorIds.length) return false;
+    return checklists.some((c) => ancestorIds.includes(c.id) && c.status === "na");
+  };
+
   // Stamps or clears completed_at/completed_by on milestone_items rows for one item.
   // selectedIds === null means "all assigned milestones" (used by the simple 0/1-milestone path).
   const syncMilestoneCompletion = async (itemId, msDone, selectedIds = null) => {
@@ -377,6 +402,17 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
 
   const handleStatusChange = async (item, newStatus) => {
     if (!canChangeStatus(item.category)) return;
+
+    // Locked as N/A by a dependency — must not be editable independently; it can only
+    // change once the ancestor itself is no longer N/A (which reverts it automatically).
+    if (isNaLockedByParent(item.id)) {
+      const ancestorIds = getAncestors(item.id);
+      const blocker = checklists.find((c) => ancestorIds.includes(c.id) && c.status === "na");
+      alert(
+        `This item is locked as N/A because it depends on "${blocker ? (refCodes[blocker.id] ? refCodes[blocker.id] + " " : "") + blocker.item_text : "another item"}", which is marked N/A.\n\nIt will revert automatically once that dependency is no longer N/A.`
+      );
+      return;
+    }
 
     // Block completion if any parent dependency is not yet complete
     if (newStatus === "complete") {
@@ -409,6 +445,25 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       }
     }
 
+    // Reverse cascade: un-marking N/A on an item that had cascaded its dependents should
+    // release them too — but only the ones with no OTHER currently-N/A ancestor, since a
+    // descendant with two N/A dependencies must stay locked until both clear.
+    if (item.status === "na" && newStatus !== "na") {
+      const descendantIds = getDescendants(item.id);
+      const toRevert = checklists.filter((c) => {
+        if (!descendantIds.includes(c.id) || c.status !== "na") return false;
+        const otherAncestorIds = getAncestors(c.id).filter((id) => id !== item.id);
+        const stillLocked = checklists.some((a) => otherAncestorIds.includes(a.id) && a.status === "na");
+        return !stillLocked;
+      });
+      if (toRevert.length > 0) {
+        const revertUpdates = { status: "pending", completed_by: null, completed_at: null, in_progress_by: null, in_progress_at: null };
+        await Promise.all(toRevert.map((c) => supabase.from("checklists").update(revertUpdates).eq("id", c.id)));
+        setChecklists((prev) => prev.map((c) => toRevert.find((x) => x.id === c.id) ? { ...c, ...revertUpdates } : c));
+        await Promise.all(toRevert.map((c) => syncMilestoneCompletion(c.id, false)));
+      }
+    }
+
     setUpdating(item.id);
     const now = new Date().toISOString();
     const updates = {
@@ -431,6 +486,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   // Opens the popup for items assigned to 2+ milestones, letting the user pick which
   // specific deadline(s) this completion applies to instead of an all-or-nothing toggle.
   const openMilestoneCompletePopup = (item) => {
+    if (isNaLockedByParent(item.id)) return;
     const completedMap = itemMsCompletedMap[item.id] || {};
     const sortedMs = getSortedAssignedMilestones(item.id);
     const selected = new Set(sortedMs.filter((m) => completedMap[m.id]).map((m) => m.id));
@@ -743,6 +799,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   // ── Item renderer ──────────────────────────────────────────────────────────
   const renderItem = (item, idx, totalInGroup) => {
     const editable = canChangeStatus(item.category);
+    const naLocked = isNaLockedByParent(item.id);
     const status = item.status || "pending";
     const isUpdating = updating === item.id;
     const completedByName = item.completed_by ? (profilesMap[item.completed_by]?.full_name || "Unknown") : null;
@@ -772,6 +829,11 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
             <span style={{ fontSize: "10px", fontWeight: "700", color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`, borderRadius: "20px", padding: "2px 10px", flexShrink: 0 }}>
               {sc.label}
             </span>
+            {naLocked && (
+              <span title="Locked N/A — a dependency is marked N/A; this will revert automatically once that clears" style={{ fontSize: "10px", fontWeight: "600", color: "var(--c-neutral-text)", background: "var(--c-neutral-bg)", border: "1px solid var(--c-neutral)", borderRadius: "20px", padding: "2px 8px", flexShrink: 0 }}>
+                🔒 locked
+              </span>
+            )}
             {item.is_custom && <span style={{ fontSize: "10px", color: "var(--c-purple)", background: "var(--c-purple-bg)", padding: "2px 7px", borderRadius: "20px" }}>custom</span>}
             {item.edited_by_pm && <span style={{ fontSize: "10px", color: "var(--c-warn)", background: "var(--c-warn-bg)", padding: "2px 7px", borderRadius: "20px" }}>✏ edited</span>}
             {meta.hasQaqc && (
@@ -815,19 +877,20 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   return (
                     <button key={s}
                       onClick={() => {
-                        if (isUpdating) return;
+                        if (isUpdating || naLocked) return;
                         if (useMsPopup) { openMilestoneCompletePopup(item); return; }
                         handleStatusChange(item, isActive ? "pending" : s);
                       }}
-                      disabled={isUpdating}
-                      title={useMsPopup ? "Choose which deadline(s) this is complete for" : isActive ? `Remove ${title}` : `Mark ${title}`}
+                      disabled={isUpdating || naLocked}
+                      title={naLocked ? "Locked — a dependency is marked N/A" : useMsPopup ? "Choose which deadline(s) this is complete for" : isActive ? `Remove ${title}` : `Mark ${title}`}
                       style={{
                         padding: isMobile ? "4px 7px" : "4px 10px",
                         border: `1px solid ${isActive ? btn.border : "var(--c-border)"}`,
                         borderRadius: "6px", fontSize: "11px", fontWeight: "600",
                         background: isActive ? btn.bg : "transparent",
                         color: isActive ? btn.color : "var(--c-text-4)",
-                        cursor: isUpdating ? "not-allowed" : "pointer",
+                        cursor: isUpdating || naLocked ? "not-allowed" : "pointer",
+                        opacity: naLocked ? 0.45 : 1,
                         transition: "all 0.1s",
                       }}>
                       {label}
