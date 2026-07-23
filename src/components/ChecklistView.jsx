@@ -33,6 +33,8 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
   const [resolvedExpanded, setResolvedExpanded] = useState(false);
   const [dashReplyText, setDashReplyText] = useState({}); // { [itemId]: string }
   const [dashReplying, setDashReplying] = useState(null); // itemId
+  const [savedItemIds, setSavedItemIds] = useState(new Set()); // this user's To-Do saves — private, never shared
+  const [savingItem, setSavingItem] = useState(null); // itemId currently being saved/removed
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -231,7 +233,45 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
       if (myProfile) pMap[myProfile.id] = myProfile;
       setProfilesMap(pMap);
     }
+
+    // Load this user's own To-Do saves (private — never queries other users' rows).
+    // A save that has since been self-completed is stale (rule: completing a saved
+    // check removes it from the To-Do list), so drop those here too, in case they were
+    // completed from a different device/session and this client never got to react live.
+    const { data: savedRows } = await supabase
+      .from("checklist_saved_items")
+      .select("checklist_item_id")
+      .eq("project_id", project.id)
+      .eq("user_id", session.user.id);
+    const savedIds = new Set((savedRows || []).map((r) => r.checklist_item_id));
+    const staleSelfCompleted = [...savedIds].filter((id) => {
+      const item = items.find((c) => c.id === id);
+      return item && item.status === "complete" && item.completed_by === session.user.id;
+    });
+    if (staleSelfCompleted.length > 0) {
+      await supabase.from("checklist_saved_items").delete().eq("user_id", session.user.id).in("checklist_item_id", staleSelfCompleted);
+      staleSelfCompleted.forEach((id) => savedIds.delete(id));
+    }
+    setSavedItemIds(savedIds);
+
     setLoading(false);
+  };
+
+  // Bookmarks/un-bookmarks an item on this user's private To-Do list — purely personal,
+  // never touches or is visible to any other user's list.
+  const toggleSaveItem = async (item) => {
+    if (savingItem) return;
+    setSavingItem(item.id);
+    const isSaved = savedItemIds.has(item.id);
+    if (isSaved) {
+      await supabase.from("checklist_saved_items").delete().eq("user_id", session.user.id).eq("checklist_item_id", item.id);
+      setSavedItemIds((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+    } else {
+      const { error } = await supabase.from("checklist_saved_items")
+        .insert({ user_id: session.user.id, checklist_item_id: item.id, project_id: project.id });
+      if (!error) setSavedItemIds((prev) => new Set(prev).add(item.id));
+    }
+    setSavingItem(null);
   };
 
   const fetchMilestoneItems = async (milestoneId) => {
@@ -443,6 +483,13 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     });
   };
 
+  // Rule: completing a check removes it from the completing user's own To-Do list.
+  const removeSavedItemOnSelfComplete = async (itemId) => {
+    if (!savedItemIds.has(itemId)) return;
+    await supabase.from("checklist_saved_items").delete().eq("user_id", session.user.id).eq("checklist_item_id", itemId);
+    setSavedItemIds((prev) => { const next = new Set(prev); next.delete(itemId); return next; });
+  };
+
   const handleStatusChange = async (item, newStatus) => {
     if (!canChangeStatus(item.category)) return;
 
@@ -523,6 +570,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     // assigned milestone. Partial (some-milestones-done) state can only be produced
     // via the multi-milestone completion popup.
     await syncMilestoneCompletion(item.id, newStatus === "complete");
+    if (newStatus === "complete") await removeSavedItemOnSelfComplete(item.id);
     setUpdating(null);
   };
 
@@ -596,6 +644,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     if (error) { console.error("Milestone completion update failed:", error.message); setUpdating(null); return; }
     setChecklists((prev) => prev.map((c) => c.id === item.id ? { ...c, ...updates } : c));
     await syncMilestoneCompletion(item.id, true, selectedIds);
+    if (newStatus === "complete") await removeSavedItemOnSelfComplete(item.id);
     setUpdating(null);
     setMilestoneCompletePopup(null);
   };
@@ -839,6 +888,30 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     return acc;
   }, {});
 
+  // ── To-Do (this user's saved items) ─────────────────────────────────────────
+  // A saved item whose check the saving user themselves completed is removed the
+  // moment that happens (see removeSavedItemOnSelfComplete) — it should never reach
+  // here. A check someone ELSE completed stays saved, but moves to its own
+  // "Completed by someone else" subsection with a manual remove action, since the
+  // saving user may still want a record of it until they clear it themselves.
+  const savedItemsAll = enabledChecklists.filter((c) => savedItemIds.has(c.id));
+  const todoActiveItems = applyFilters(savedItemsAll.filter((c) => !(c.status === "complete" && c.completed_by === session.user.id)))
+    .filter((c) => c.status !== "complete")
+    .sort((a, b) => {
+      const ca = categoryOrderIndex[a.category] ?? 9999;
+      const cb = categoryOrderIndex[b.category] ?? 9999;
+      if (ca !== cb) return ca - cb;
+      return (a.sort_order ?? 9999) - (b.sort_order ?? 9999) || a.item_id.localeCompare(b.item_id);
+    });
+  const todoCompletedByOthers = savedItemsAll.filter((c) => c.status === "complete" && c.completed_by !== session.user.id);
+  const groupedTodoItems = todoActiveItems.reduce((acc, item) => {
+    const catLabel = getCatLabel(item.category);
+    const key = item.sub_section ? `${catLabel} — ${item.sub_section}` : catLabel;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
   // ── Item renderer ──────────────────────────────────────────────────────────
   const renderItem = (item, idx, totalInGroup) => {
     const editable = canChangeStatus(item.category);
@@ -853,6 +926,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     const sc = statusColors[status] || statusColors.pending;
     const msList = itemMsMap[item.id] || [];
     const isHelpOpen = helpPopover === item.id;
+    const isSaved = savedItemIds.has(item.id);
 
     return (
       <div key={item.id} style={{
@@ -956,6 +1030,20 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap", fontWeight: meta.hasQaqc ? "700" : "400",
             }}>
               💬{meta.count > 0 ? ` ${meta.count}` : ""}
+            </button>
+
+            {/* Save Item button — bookmarks this check to the current user's private To-Do list */}
+            <button onClick={() => toggleSaveItem(item)} disabled={savingItem === item.id}
+              title={isSaved ? "Remove from To-Do" : "Save to To-Do"} style={{
+              flexShrink: 0,
+              background: isSaved ? "var(--c-accent-dk)" : "transparent",
+              border: `1px solid ${isSaved ? "var(--c-accent)" : "var(--c-border)"}`,
+              color: isSaved ? "var(--c-accent-lt)" : "var(--c-text-3)",
+              borderRadius: "6px", padding: "4px 10px", fontSize: "13px",
+              cursor: savingItem === item.id ? "not-allowed" : "pointer",
+              opacity: savingItem === item.id ? 0.6 : 1,
+            }}>
+              🔖
             </button>
 
             {/* Help popover button */}
@@ -1158,13 +1246,15 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
           active: activeCategory === cat.id,
           onClick: () => setActiveCategory(cat.id),
         }))
-      : milestones.map((m) => ({
+      : viewMode === "milestone"
+      ? milestones.map((m) => ({
           id: m.id,
           label: m.name,
           progress: milestoneItemsCache[m.id] ? getMilestoneProgress(m.id) : null,
           active: activeMilestoneId === m.id,
           onClick: () => switchToMilestone(m.id),
-        }));
+        }))
+      : [];
 
     return (
       <div style={{ overflowX: "auto", display: "flex", gap: "8px", padding: "10px 16px", background: "var(--c-surface)", borderBottom: "1px solid #334155" }}>
@@ -1234,6 +1324,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
           { id: "dashboard", label: "📊 Dashboard" },
           { id: "category",  label: "By Category" },
           { id: "milestone", label: "By Milestone" },
+          { id: "todo",      label: "🔖 To-Do" },
         ].map(({ id, label }) => (
           <button key={id} onClick={async () => {
             if (id === "dashboard") { setViewMode("dashboard"); await loadQaqcAlerts(); }
@@ -1408,7 +1499,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   </button>
                 );
               })
-            ) : (
+            ) : viewMode === "milestone" ? (
               milestones.length === 0 ? (
                 <p style={{ color: "var(--c-text-3)", fontSize: "12px", padding: "8px" }}>No milestones set up.</p>
               ) : (
@@ -1445,6 +1536,23 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   );
                 })
               )
+            ) : (
+              <>
+                <p style={{ fontSize: "11px", fontWeight: "700", color: "var(--c-text-3)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "4px 0 12px 4px" }}>Your To-Do</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", marginBottom: "4px" }}>
+                  <span style={{ fontSize: "13px", color: "var(--c-text)" }}>🔖 Saved</span>
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--c-accent)" }}>{todoActiveItems.length}</span>
+                </div>
+                {todoCompletedByOthers.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px" }}>
+                    <span style={{ fontSize: "13px", color: "var(--c-text)" }}>✓ Completed by others</span>
+                    <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--c-ok-text)" }}>{todoCompletedByOthers.length}</span>
+                  </div>
+                )}
+                <p style={{ fontSize: "11px", color: "var(--c-text-4)", margin: "12px 4px 0", lineHeight: "1.5" }}>
+                  Private to you — bookmark a check with 🔖 to add it here.
+                </p>
+              </>
             )}
           </div>
         )}
@@ -1888,7 +1996,7 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               })()}
               {Object.entries(groupedCategoryItems).map(([sub, items]) => renderSection(sub, items))}
             </>
-          ) : (
+          ) : viewMode === "milestone" ? (
             milestones.length === 0 ? (
               <div style={{ textAlign: "center", padding: "60px 0" }}>
                 <p style={{ color: "var(--c-text-2)", fontSize: "16px" }}>No milestones set up.</p>
@@ -1924,6 +2032,49 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                 {Object.entries(groupedMilestoneItems).map(([sub, items]) => renderSection(sub, items))}
               </>
             )
+          ) : (
+            <>
+              <h2 style={{ color: "var(--c-text)", margin: "0 0 4px", fontSize: isMobile ? "16px" : "20px" }}>🔖 To-Do</h2>
+              <p style={{ color: "var(--c-text-3)", fontSize: "12px", margin: "0 0 20px" }}>
+                Private to you — only checks you've bookmarked appear here.
+              </p>
+              {todoActiveItems.length === 0 && todoCompletedByOthers.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "60px 0" }}>
+                  <p style={{ color: "var(--c-text-2)", fontSize: "16px" }}>Nothing saved yet.</p>
+                  <p style={{ color: "var(--c-text-3)", fontSize: "14px" }}>Tap 🔖 on any check to add it to your To-Do list.</p>
+                </div>
+              ) : (
+                <>
+                  {Object.entries(groupedTodoItems).map(([sub, items]) => renderSection(sub, items))}
+                  {todoCompletedByOthers.length > 0 && (
+                    <div style={{ marginTop: "24px" }}>
+                      <h3 style={{ color: "var(--c-ok-text)", margin: "0 0 12px", fontSize: "14px", fontWeight: "700" }}>
+                        ✓ Completed by someone else ({todoCompletedByOthers.length})
+                      </h3>
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        {todoCompletedByOthers.map((c) => (
+                          <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", background: "var(--c-surface)", border: "1px solid var(--c-ok)", borderRadius: "8px", padding: "10px 14px" }}>
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{ fontSize: "10px", color: "var(--c-text-4)", fontFamily: "monospace" }}>{refCodes[c.id]} </span>
+                              <span style={{ fontSize: "13px", color: "var(--c-text)" }}>{c.item_text}</span>
+                              <div style={{ fontSize: "11px", color: "var(--c-ok-text)", marginTop: "4px" }}>
+                                ✓ {c.completed_by ? (profilesMap[c.completed_by]?.full_name || "Unknown") : "Completed automatically"} · {formatDate(c.completed_at)}
+                              </div>
+                            </div>
+                            <button onClick={() => toggleSaveItem(c)} disabled={savingItem === c.id} style={{
+                              flexShrink: 0, padding: "5px 12px", background: "transparent", border: "1px solid var(--c-border)",
+                              color: "var(--c-text-2)", borderRadius: "6px", cursor: savingItem === c.id ? "not-allowed" : "pointer", fontSize: "12px",
+                            }}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
