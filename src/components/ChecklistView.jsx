@@ -224,7 +224,9 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     const currentLevelIds = new Set(lvls.map((l) => l.id));
     const staleMilestoneItems = []; // [{ itemId, msId }]
     items.forEach((item) => {
-      if (!item.is_level_based || currentLevelIds.size === 0) return;
+      // With fewer than 2 levels there's nothing to gate — a single level (or none)
+      // means completion just follows the normal milestone rules, untouched by levels.
+      if (!item.is_level_based || currentLevelIds.size < 2) return;
       const perMs = imCompletedMap[item.id];
       if (!perMs) return;
       Object.keys(perMs).forEach((msId) => {
@@ -1161,7 +1163,10 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
                   const btn = statusColors[s];
                   const isActive = status === s;
                   const assignedMsIds = itemMsIdMap[item.id] || [];
-                  const useLevelPopup = s === "complete" && item.is_level_based && assignedMsIds.length >= 1;
+                  // With a single project level there's nothing to gate — completing
+                  // it is equivalent to completing the whole item, so skip the level
+                  // picker entirely and fall through to the normal milestone rules.
+                  const useLevelPopup = s === "complete" && item.is_level_based && assignedMsIds.length >= 1 && projectLevels.length >= 2;
                   const useMsPopup = !useLevelPopup && s === "complete" && assignedMsIds.length >= 2;
                   return (
                     <button key={s}
@@ -1219,23 +1224,54 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
               🔖
             </button>
 
-            {/* Levels button — for a level-based item, opens the per-level/per-milestone
-                completion picker at any time, not just when marking it complete. */}
-            {item.is_level_based && (itemMsIdMap[item.id] || []).length > 0 && (() => {
-              const { done, total } = getLevelProgress(item);
-              const allDone = total > 0 && done === total;
-              return (
-                <button onClick={() => setLevelPopup({ item })} title="Per-level completion" style={{
-                  flexShrink: 0,
-                  background: allDone ? "var(--c-ok-bg)" : "transparent",
-                  border: `1px solid ${allDone ? "var(--c-ok)" : "var(--c-border)"}`,
-                  color: allDone ? "var(--c-ok-text)" : "var(--c-text-3)",
-                  borderRadius: "6px", padding: "4px 10px", fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
-                }}>
-                  🏢 {done}/{total}
-                </button>
-              );
-            })()}
+            {/* Level-based indicator — always visible when the item is flagged level-based,
+                regardless of milestone assignment, so it's never a mystery why a check
+                behaves differently. Its meaning depends on how many project levels exist:
+                0 → nothing to gate yet, flag the PM to set levels up; 1 → gating is moot,
+                shown for information only; 2+ → opens the per-level/per-milestone picker,
+                usable any time, not just when marking the check complete. */}
+            {item.is_level_based && (
+              projectLevels.length === 0 ? (
+                <span title="This checklist item is level-based, but no project levels have been set up yet. Ask a PM to add levels in Project Setup → Levels."
+                  style={{
+                    flexShrink: 0, display: "flex", alignItems: "center", gap: "4px",
+                    background: "var(--c-warn-bg)", border: "1px solid var(--c-warn)", color: "var(--c-warn)",
+                    borderRadius: "6px", padding: "4px 10px", fontSize: "11px", fontWeight: "600", whiteSpace: "nowrap",
+                  }}>
+                  ⚠ 🏢 No levels set up
+                </span>
+              ) : projectLevels.length === 1 ? (
+                <span title="Level-based, but with only one project level there's nothing to gate — completing it follows the normal milestone rules."
+                  style={{
+                    flexShrink: 0, background: "transparent", border: "1px solid var(--c-border)",
+                    color: "var(--c-text-3)", borderRadius: "6px", padding: "4px 10px", fontSize: "11px", whiteSpace: "nowrap",
+                  }}>
+                  🏢 Level-based
+                </span>
+              ) : (itemMsIdMap[item.id] || []).length > 0 ? (() => {
+                const { done, total } = getLevelProgress(item);
+                const allDone = total > 0 && done === total;
+                return (
+                  <button onClick={() => setLevelPopup({ item })} title="Per-level completion" style={{
+                    flexShrink: 0,
+                    background: allDone ? "var(--c-ok-bg)" : "transparent",
+                    border: `1px solid ${allDone ? "var(--c-ok)" : "var(--c-border)"}`,
+                    color: allDone ? "var(--c-ok-text)" : "var(--c-text-3)",
+                    borderRadius: "6px", padding: "4px 10px", fontSize: "11px", cursor: "pointer", whiteSpace: "nowrap",
+                  }}>
+                    🏢 {done}/{total}
+                  </button>
+                );
+              })() : (
+                <span title="Level-based, but this check isn't assigned to any milestone yet — level completion only applies once it is."
+                  style={{
+                    flexShrink: 0, background: "transparent", border: "1px solid var(--c-border)",
+                    color: "var(--c-text-3)", borderRadius: "6px", padding: "4px 10px", fontSize: "11px", whiteSpace: "nowrap",
+                  }}>
+                  🏢 Level-based
+                </span>
+              )
+            )}
 
             {/* Help popover button — position:fixed (computed on open, below) so the
                 popover escapes the section card's overflow:hidden and the viewport
