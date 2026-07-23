@@ -202,10 +202,14 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
     setItemLevelCompletedMap(ilcMap);
 
     // A level-based item's milestone completion can go stale exactly like the status
-    // reconciliation below (a level was added/removed since it was last fully checked),
-    // so re-derive it here — clearing imCompletedMap entries that no longer have every
-    // current level checked — before the status reconciliation reads imCompletedMap.
+    // reconciliation below (a level was added/removed since it was last fully checked,
+    // or the item only just became level-based after already being marked done the old
+    // way), so re-derive it here — clearing imCompletedMap entries that no longer have
+    // every current level checked — before the status reconciliation reads imCompletedMap.
+    // The underlying milestone_items row is stale too and is corrected below so a direct
+    // DB read doesn't disagree with what the app displays.
     const currentLevelIds = new Set(lvls.map((l) => l.id));
+    const staleMilestoneItems = []; // [{ itemId, msId }]
     items.forEach((item) => {
       if (!item.is_level_based || currentLevelIds.size === 0) return;
       const perMs = imCompletedMap[item.id];
@@ -214,9 +218,15 @@ export default function ChecklistView({ project, userRole, session, onBack, onSi
         if (!perMs[msId]) return;
         const doneLevels = ilcMap[item.id]?.[msId] || {};
         const allLevelsDone = [...currentLevelIds].every((lid) => doneLevels[lid]);
-        if (!allLevelsDone) perMs[msId] = null;
+        if (!allLevelsDone) { perMs[msId] = null; staleMilestoneItems.push({ itemId: item.id, msId }); }
       });
     });
+    if (staleMilestoneItems.length > 0) {
+      await Promise.all(staleMilestoneItems.map(({ itemId, msId }) =>
+        supabase.from("milestone_items").update({ completed_at: null, completed_by: null })
+          .eq("checklist_item_id", itemId).eq("milestone_id", msId)
+      ));
+    }
 
     // Reconcile milestone-driven status: once a check has entered the milestone flow
     // (complete/in_progress), its status must track whichever milestones are CURRENTLY
