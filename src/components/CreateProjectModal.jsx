@@ -65,6 +65,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
         project_id: projectId, item_id: item.item_id, category: item.category,
         sub_section: item.sub_section || null, phase: item.phase || null,
         item_text: item.text, status: "pending", sort_order: idx,
+        help_text: null, days_before_milestone: null, is_level_based: false,
       }));
     }
 
@@ -83,6 +84,9 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
             sub_section: item.section || TMPL_META[item.item_id]?.sub_section || null,
             phase: TMPL_META[item.item_id]?.phase || null,
             item_text: item.item_text, status: "pending", sort_order: idx++,
+            help_text: item.help_text || null,
+            days_before_milestone: item.days_before_milestone ?? null,
+            is_level_based: !!item.is_level_based,
           });
         });
       } else if (!initializedCats.has(catId)) {
@@ -92,6 +96,7 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
             project_id: projectId, item_id: item.item_id, category: catId,
             sub_section: item.sub_section || null, phase: item.phase || null,
             item_text: item.text, status: "pending", sort_order: idx++,
+            help_text: null, days_before_milestone: null, is_level_based: false,
           });
         });
       }
@@ -126,6 +131,9 @@ export default function CreateProjectModal({ onClose, onCreated, userId, org }) 
             item_id: `tmpl_${Date.now().toString(36)}_${item.item_id}`,
             category: item.category, sub_section: item.sub_section || null,
             phase: item.phase || null, item_text: item.item_text,
+            help_text: item.help_text || null,
+            days_before_milestone: item.days_before_milestone ?? null,
+            is_level_based: !!item.is_level_based,
             status: "pending", is_custom: true,
           }))
         )
